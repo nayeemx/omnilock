@@ -10,7 +10,7 @@
 
 ## 1. Automated 1-Click Environment Setup Script (`setup_environment.ps1`)
 
-If your personal computer is missing **Rust**, **Node.js**, **Visual Studio C++ Build Tools**, or **WiX Toolchain**, simply run the automated PowerShell setup script included in `D:\nayeem\omnilock\docs\`:
+If your personal computer is missing **Rust**, **Node.js**, **Visual Studio C++ Build Tools**, or **WiX Toolchain**, simply run the automated PowerShell setup script included in `D:\projects\code\omnilock\docs\`:
 
 ```powershell
 # Open PowerShell as Administrator and run:
