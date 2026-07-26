@@ -2309,15 +2309,17 @@ dependencies = [
 
 [[package]]
 name = "omnilock"
-version = "0.0.2"
+version = "0.0.4"
 dependencies = [
  "aes-gcm",
  "argon2",
  "base32 0.4.0",
  "base64 0.21.7",
  "getrandom 0.2.17",
+ "hmac",
  "serde",
  "serde_json",
+ "sha1",
  "sha2",
  "subtle",
  "sysinfo",

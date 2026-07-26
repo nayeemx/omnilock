@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-26T14:00:00Z",
-  "version": "v0.0.3",
-  "notes": "Critical fixes: TOTP 2FA verification, setup auto-login, panic hotkey, footer version, auto-update endpoint",
+  "pub_date": "2026-07-26T14:30:00Z",
+  "version": "v0.0.4",
+  "notes": "Fixes: 2FA TOTP input missing on login after enabling 2FA; password reset now rejects reusing the same password",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.3/OmniLock_0.0.3_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTTGRCRTllUUF4Rlk5alZieW9QRVR5MmVFOElveVZjbTdxd0VvL3dJUElMdjlDRGE3Q1VLakZsRmR5UVdVNE9YMTlxc2lvQi9HSTdGdmdXcUpaUUh6a1VDOEZyVnZFOVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDU0Nzg0CWZpbGU6T21uaUxvY2tfMC4wLjNfeDY0LXNldHVwLmV4ZQorQVVHdEZBZ3UrMEVpaEwxckRFbTBrT3lNcmZJVXgzc1ZzazRHd1N1OVU0VjJRVzZ5NENCNjhibW0vUjlNTlRaNzhKeDBqWVd3ZXk3OHV1aXRLdWREUT09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.4/OmniLock_0.0.4_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTTGRCRTllUUF4RmNTeDZFZmhwcDlYbEVFenJhek1BallIMDBPeHliNXA5a0JwVzFSeUFyOXp0b0tnVVZoZEZIeG56UlFjM1lrc3VQQU8vMC9SdnFVTnBianc1Vm9yQmdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDU2MDc4CWZpbGU6T21uaUxvY2tfMC4wLjRfeDY0LXNldHVwLmV4ZQpjZzhHaGdjSVUvaUJGREZVRTNYUkZDYkwrdVRPZ3hDU2kzQSs4eWttU1hvWHlpZ2dKYklKUWtVU042TVV1RmMvZ1BCSE9XdkdLU0I0ZmkxYmxjVDVBdz09Cg=="
     }
   }
 }

@@ -51,6 +51,8 @@ export default function App() {
     try {
       await triggerPanicLock();
     } catch {}
+    const status = await getVaultStatus();
+    setVaultStatus(status);
     setIsUnlocked(false);
     setVaultConfig(null);
   }, []);
@@ -87,7 +89,7 @@ export default function App() {
           {activeTab === "vault" && <VaultPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "security" && <SecurityPage config={vaultConfig} refresh={refreshConfig} />}
         </main>
-        <Footer />
+        <Footer version={vaultStatus?.version} />
       </div>
     </div>
   );

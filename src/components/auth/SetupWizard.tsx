@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Shield, Eye, EyeOff, ArrowRight,
 } from "lucide-react";
-import { setupVault } from "../../lib/tauri-bridge";
+import { setupVault, unlockSession } from "../../lib/tauri-bridge";
 import { Field } from "../shared/Field";
 import { securityQuestions, type SetupStep } from "../types";
 
@@ -37,6 +37,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
         security_answer: answer,
         totp_secret: "",
       });
+      await unlockSession({ master_password: password, totp_code: "" });
       onComplete();
     } catch (e: any) {
       setError(String(e));

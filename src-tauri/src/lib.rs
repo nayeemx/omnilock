@@ -33,7 +33,7 @@ fn cmd_get_vault_status(_state: State<'_, AppState>) -> VaultStatusDto {
         initialized: vault::vault_exists(),
         totp_enabled,
         publisher: "InnologyBD".to_string(),
-        version: "0.0.2".to_string(),
+        version: "0.0.4".to_string(),
     }
 }
 
@@ -525,12 +525,11 @@ pub fn run() {
             cmd_detect_usb_key,
             cmd_reset_password,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(desktop)]
             {
-                app.handle().plugin(tauri_plugin_updater::Builder::new().build()).ok();
+                _app.handle().plugin(tauri_plugin_updater::Builder::new().build()).ok();
             }
-            panic_hotkey::register_panic_hotkey().ok();
             panic_hotkey::start_hotkey_listener();
             watchdog::start_watchdog();
             Ok(())

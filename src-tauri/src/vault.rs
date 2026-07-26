@@ -261,6 +261,10 @@ pub fn reset_password(new_password: &str, answer: &str) -> Result<(), String> {
     let old_password = String::from_utf8(old_pw_bytes)
         .map_err(|_| "Invalid recovery data format".to_string())?;
 
+    if new_password == old_password {
+        return Err("New password must be different from your current password.".to_string());
+    }
+
     rekey_vault(&old_password, new_password, &answer)?;
 
     Ok(())

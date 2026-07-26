@@ -191,36 +191,43 @@ struct GUID {
 }
 
 pub fn start_hotkey_listener() {
-    std::thread::spawn(|| unsafe {
-        extern "system" {
-            fn GetModuleHandleA(name: *const u8) -> isize;
-            fn GetProcAddress(module: isize, name: *const u8) -> usize;
+    std::thread::spawn(|| {
+        if let Err(e) = register_panic_hotkey() {
+            eprintln!("Failed to register panic hotkey: {}", e);
+            return;
         }
 
-        let user32 = GetModuleHandleA(b"user32.dll\0".as_ptr());
-        if user32 == 0 { return; }
-
-        let get_msg_addr = GetProcAddress(user32, b"GetMessageW\0".as_ptr());
-        let translate_addr = GetProcAddress(user32, b"TranslateMessage\0".as_ptr());
-        let dispatch_addr = GetProcAddress(user32, b"DispatchMessageW\0".as_ptr());
-
-        if get_msg_addr == 0 || translate_addr == 0 || dispatch_addr == 0 { return; }
-
-        let get_msg: GetMessageWFn = std::mem::transmute(get_msg_addr);
-        let translate: TranslateMessageFn = std::mem::transmute(translate_addr);
-        let dispatch: DispatchMessageWFn = std::mem::transmute(dispatch_addr);
-
-        let mut msg: MSG = std::mem::zeroed();
-        loop {
-            let result = get_msg(&mut msg, 0, 0, 0);
-            if result == 0 || result == -1 { break; }
-            if msg.message == WM_HOTKEY {
-                PANIC_ACTIVE.store(true, Ordering::SeqCst);
-                do_mute_audio();
-                do_lock_workstation();
+        unsafe {
+            extern "system" {
+                fn GetModuleHandleA(name: *const u8) -> isize;
+                fn GetProcAddress(module: isize, name: *const u8) -> usize;
             }
-            translate(&msg);
-            dispatch(&msg);
+
+            let user32 = GetModuleHandleA(b"user32.dll\0".as_ptr());
+            if user32 == 0 { return; }
+
+            let get_msg_addr = GetProcAddress(user32, b"GetMessageW\0".as_ptr());
+            let translate_addr = GetProcAddress(user32, b"TranslateMessage\0".as_ptr());
+            let dispatch_addr = GetProcAddress(user32, b"DispatchMessageW\0".as_ptr());
+
+            if get_msg_addr == 0 || translate_addr == 0 || dispatch_addr == 0 { return; }
+
+            let get_msg: GetMessageWFn = std::mem::transmute(get_msg_addr);
+            let translate: TranslateMessageFn = std::mem::transmute(translate_addr);
+            let dispatch: DispatchMessageWFn = std::mem::transmute(dispatch_addr);
+
+            let mut msg: MSG = std::mem::zeroed();
+            loop {
+                let result = get_msg(&mut msg, 0, 0, 0);
+                if result == 0 || result == -1 { break; }
+                if msg.message == WM_HOTKEY {
+                    PANIC_ACTIVE.store(true, Ordering::SeqCst);
+                    do_mute_audio();
+                    do_lock_workstation();
+                }
+                translate(&msg);
+                dispatch(&msg);
+            }
         }
     });
 }
