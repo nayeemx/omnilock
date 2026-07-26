@@ -33,7 +33,7 @@ fn cmd_get_vault_status(_state: State<'_, AppState>) -> VaultStatusDto {
         initialized: vault::vault_exists(),
         totp_enabled,
         publisher: "InnologyBD".to_string(),
-        version: "0.0.1".to_string(),
+        version: "0.0.2".to_string(),
     }
 }
 
