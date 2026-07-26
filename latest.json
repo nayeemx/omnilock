@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-26T15:30:00Z",
-  "version": "v0.0.6",
-  "notes": "Recovery key and USB key recovery now work. Forgot password offers 3 methods: security question, recovery key, USB hardware key. Test button added for enrolled USB keys.",
+  "pub_date": "2026-07-26T16:00:00Z",
+  "version": "v0.0.7",
+  "notes": "Stable signing key. All recovery methods verified. Auto-update chain proven.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.6/OmniLock_0.0.6_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTRWhCbnVTV1FSZk5ZWGdoK2ZDSVlUSW1KZ2F6bTYvenFsb3JheENtWDhXSUgwWitoZFlmTG1ESGxkQjRZT3pIN0dEbXo2WktXNlIzUktLTlA1bkhNb1FtZUs1cnBCOEFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDYxODA5CWZpbGU6T21uaUxvY2tfMC4wLjZfeDY0LXNldHVwLmV4ZQo5cU1PNDVQcG5lUjhUeW13Q1NjSlIvbkJnV0o3djRyclhybkRhS2kyNXdnQmw4R2VpMUlNYkJUL0tQNWlmUlpFUWJyRWxSYkJWbzVqanBrWnVoMUxBdz09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.7/OmniLock_0.0.7_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRbEF6MENyWW5VUkZXVVErd1JHd0JjbnVhK21MdzN4b0FDMjNaMHpQcUhRbUVQRGxVajZrdE50Ny9JVFNHVlJRLzRJU3VDdm9pUzhGMFB2SDlvQjUrYWZSMTBiUEp2NEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDY1MzQ1CWZpbGU6T21uaUxvY2tfMC4wLjdfeDY0LXNldHVwLmV4ZQppaHRBR1hwbzB4cjdXSWtsd0VRaitZWlN2Y1JubmtKMElmaWxOTnVzK0o3RHl0Q0xMZjFiWDd3WE9Gb3lYbCtYMEI2aERNQVNxZXpTRkFZTzBKNi9EUT09Cg=="
     }
   }
 }

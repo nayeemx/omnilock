@@ -3,6 +3,7 @@ dist/
 src-tauri/target/
 src-tauri/update.key
 src-tauri/update.key.pub
+signing-keys/
 *.log
 .DS_Store
 *.suo
