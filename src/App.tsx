@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Shield } from "lucide-react";
 import {
-  getVaultStatus, getVaultConfig, triggerPanicLock,
+  getVaultStatus, getVaultConfig, lockNow,
   type VaultStatusDto, type VaultConfigDto,
 } from "./lib/tauri-bridge";
 import { SetupWizard } from "./components/auth/SetupWizard";
@@ -13,17 +13,25 @@ import { AppLockerPage } from "./components/pages/AppLockerPage";
 import { PresetsPage } from "./components/pages/PresetsPage";
 import { VaultPage } from "./components/pages/VaultPage";
 import { SecurityPage } from "./components/pages/SecurityPage";
+import { UnlockWidget } from "./components/widget/UnlockWidget";
 import { type TabId } from "./components/types";
 
+function isWidgetMode(): boolean {
+  return new URLSearchParams(window.location.search).has("widget");
+}
+
 export default function App() {
+  const [widgetMode] = useState(isWidgetMode);
   const [vaultStatus, setVaultStatus] = useState<VaultStatusDto | null>(null);
   const [vaultConfig, setVaultConfig] = useState<VaultConfigDto | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("apps");
 
   useEffect(() => {
-    getVaultStatus().then(setVaultStatus).catch(console.error);
-  }, []);
+    if (!widgetMode) {
+      getVaultStatus().then(setVaultStatus).catch(console.error);
+    }
+  }, [widgetMode]);
 
   const refreshConfig = useCallback(async () => {
     try {
@@ -49,13 +57,17 @@ export default function App() {
 
   const handleLockNow = useCallback(async () => {
     try {
-      await triggerPanicLock();
+      await lockNow();
     } catch {}
     const status = await getVaultStatus();
     setVaultStatus(status);
     setIsUnlocked(false);
     setVaultConfig(null);
   }, []);
+
+  if (widgetMode) {
+    return <UnlockWidget />;
+  }
 
   if (!vaultStatus) {
     return (

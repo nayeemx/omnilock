@@ -1,8 +1,28 @@
+import { useState, useEffect } from "react";
 import { Shield, Activity } from "lucide-react";
-import { type VaultConfigDto } from "../../lib/tauri-bridge";
+import { type VaultConfigDto, getWatchdogStatus, type WatchdogStatusDto } from "../../lib/tauri-bridge";
 import { tabs, type TabId } from "../types";
 
+function formatUptime(secs: number): string {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId) => void; config: VaultConfigDto | null }) {
+  const [watchdog, setWatchdog] = useState<WatchdogStatusDto | null>(null);
+
+  useEffect(() => {
+    getWatchdogStatus().then(setWatchdog).catch(() => {});
+    const interval = setInterval(() => {
+      getWatchdogStatus().then(setWatchdog).catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <aside className="w-72 shrink-0 p-5 border-r border-[color:var(--border)] glass-subtle flex flex-col gap-2">
       <div className="flex items-center gap-3 px-2 pt-1 pb-6">
@@ -41,12 +61,14 @@ export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId
           <span className="text-xs uppercase tracking-widest text-[color:var(--muted-foreground)]">Guardian Daemon</span>
         </div>
         <div className="flex items-baseline justify-between mb-2">
-          <span className="text-2xl font-semibold">Active</span>
-          <span className="text-xs text-[color:var(--success)]">● Healthy</span>
+          <span className="text-2xl font-semibold">{watchdog?.status || "Starting"}</span>
+          <span className="text-xs text-[color:var(--success)]">● {watchdog ? "Healthy" : "Initializing"}</span>
         </div>
-        <div className="text-xs text-[color:var(--muted-foreground)]">omnilock-guard.exe · PID 4812</div>
+        <div className="text-xs text-[color:var(--muted-foreground)]">
+          omnilock.exe · PID {watchdog?.pid || "..."}
+        </div>
         <div className="mt-3 pt-3 border-t border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
-          Uptime <span className="text-[color:var(--foreground)]">14d 07h 22m</span>
+          Uptime <span className="text-[color:var(--foreground)]">{watchdog ? formatUptime(watchdog.uptime_secs) : "..."}</span>
         </div>
       </div>
     </aside>

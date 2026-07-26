@@ -322,7 +322,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             <Power className="w-5 h-5 text-[color:var(--warning)]" />
             <h3 className="font-semibold">Panic Hotkey</h3>
           </div>
-          <p className="text-xs text-[color:var(--muted-foreground)] mb-4">Instantly blanks the screen, mutes audio and locks the session.</p>
+          <p className="text-xs text-[color:var(--muted-foreground)] mb-4">Instantly mutes all audio and locks the Windows session. Press Win+Alt+L from anywhere.</p>
           <div className="flex items-center gap-2">
             {["Win", "Alt", "L"].map(k => (
               <kbd key={k} className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm font-mono">{k}</kbd>

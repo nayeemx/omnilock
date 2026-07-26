@@ -110,3 +110,11 @@ pub fn verify_security_answer(answer: &str, stored_hash: &[u8]) -> bool {
     let computed = vault::hash_answer(answer);
     computed.as_slice().ct_eq(stored_hash).into()
 }
+
+pub fn is_session_expired(token: &SessionToken) -> bool {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    now > token.expires_at
+}

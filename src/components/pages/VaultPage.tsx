@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
-  addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile,
+  addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile, showWidget,
   type VaultConfigDto,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -115,6 +115,12 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                           className={`px-3 py-1.5 rounded-lg border transition text-xs ${isLocked ? "border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10" : "border-white/10 hover:bg-white/[0.04]"}`}>
                     {isLocked ? "Unlock" : "Lock"}
                   </button>
+                  {isLocked && (
+                    <button onClick={() => showWidget("drive", letter, `${letter}:\\`)}
+                            className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
+                      Password Unlock
+                    </button>
+                  )}
                   <span className={isLocked ? "text-[color:var(--primary)]" : ""}>{isLocked ? "DACL Enforced" : "Unprotected"}</span>
                 </div>
               </div>
@@ -153,6 +159,10 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               <button onClick={() => handleRemovePath(f, "folder")} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
                 <X className="w-4 h-4" />
               </button>
+              <button onClick={() => showWidget("folder", f, f.split("\\").pop() || f)}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
+                Unlock
+              </button>
             </div>
           ))}
           {lockedFiles.map(f => (
@@ -166,6 +176,10 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </div>
               <button onClick={() => handleRemovePath(f, "file")} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
                 <X className="w-4 h-4" />
+              </button>
+              <button onClick={() => showWidget("file", f, f.split("\\").pop() || f)}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
+                Unlock
               </button>
             </div>
           ))}

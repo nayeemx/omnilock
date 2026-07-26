@@ -18,16 +18,30 @@ pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn unlock_drive(drive_letter: &str) -> Result<(), String> {
+pub fn unlock_drive(drive_letter: &str, remaining_locked: &[String]) -> Result<(), String> {
     let root = format!("{}:\\", drive_letter);
     file_locker::unlock_file(&root)?;
 
-    let reg_cmd = r"reg delete HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /f";
-
-    Command::new("cmd")
-        .args(["/C", reg_cmd])
-        .output()
-        .map_err(|e| e.to_string())?;
+    if remaining_locked.is_empty() {
+        let reg_cmd = r"reg delete HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /f";
+        Command::new("cmd")
+            .args(["/C", reg_cmd])
+            .output()
+            .map_err(|e| e.to_string())?;
+    } else {
+        let mut mask = 0u32;
+        for drive in remaining_locked {
+            mask |= calculate_nodrives_value(drive);
+        }
+        let reg_cmd = format!(
+            r"reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /t REG_DWORD /d {} /f",
+            mask
+        );
+        Command::new("cmd")
+            .args(["/C", &reg_cmd])
+            .output()
+            .map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

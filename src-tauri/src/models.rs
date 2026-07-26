@@ -24,6 +24,27 @@ pub struct VaultConfigDto {
     pub usb_key_drive_label: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchdogStatusDto {
+    pub pid: u32,
+    pub uptime_secs: u64,
+    pub process_count: usize,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemInfoDto {
+    pub os: String,
+    pub arch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnlockTarget {
+    pub target_type: String,
+    pub target_id: String,
+    pub display_name: String,
+}
+
 impl From<&VaultConfig> for VaultConfigDto {
     fn from(config: &VaultConfig) -> Self {
         Self {

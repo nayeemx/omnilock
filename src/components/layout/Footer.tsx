@@ -1,6 +1,14 @@
+import { useState, useEffect } from "react";
 import { Shield } from "lucide-react";
+import { getSystemInfo, type SystemInfoDto } from "../../lib/tauri-bridge";
 
 export function Footer({ version }: { version?: string }) {
+  const [sysInfo, setSysInfo] = useState<SystemInfoDto | null>(null);
+
+  useEffect(() => {
+    getSystemInfo().then(setSysInfo).catch(() => {});
+  }, []);
+
   return (
     <footer className="px-8 py-4 border-t border-[color:var(--border)] glass-subtle flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
       <div className="flex items-center gap-2">
@@ -9,8 +17,7 @@ export function Footer({ version }: { version?: string }) {
       </div>
       <div className="flex items-center gap-4">
         <span>v{version || "?"}</span>
-        <span>Windows 11 · x64</span>
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[color:var(--success)]" /> All systems nominal</span>
+        <span>{sysInfo ? `${sysInfo.os} · ${sysInfo.arch}` : "..."}</span>
       </div>
     </footer>
   );

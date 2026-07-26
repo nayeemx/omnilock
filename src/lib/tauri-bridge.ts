@@ -31,6 +31,18 @@ export interface VaultConfigDto {
   usb_key_drive_label: string;
 }
 
+export interface WatchdogStatusDto {
+  pid: number;
+  uptime_secs: number;
+  process_count: number;
+  status: string;
+}
+
+export interface SystemInfoDto {
+  os: string;
+  arch: string;
+}
+
 export async function getVaultStatus(): Promise<VaultStatusDto> {
   return invoke("cmd_get_vault_status");
 }
@@ -51,7 +63,7 @@ export async function setupVault(payload: {
 export async function unlockSession(authPayload: {
   master_password: string;
   totp_code: string;
-}): Promise<void> {
+}): Promise<string> {
   return invoke("cmd_unlock_session", { authPayload });
 }
 
@@ -63,8 +75,8 @@ export async function toggleInstallerGuard(enabled: boolean): Promise<void> {
   return invoke("cmd_toggle_installer_guard", { enabled });
 }
 
-export async function triggerPanicLock(): Promise<void> {
-  return invoke("cmd_trigger_panic_lock");
+export async function lockNow(): Promise<void> {
+  return invoke("cmd_lock_now");
 }
 
 export async function addLockedDrive(driveLetter: string): Promise<void> {
@@ -171,6 +183,30 @@ export async function detectUsbKey(): Promise<string | null> {
 
 export async function recoverWithUsbKey(newPassword: string): Promise<void> {
   return invoke("cmd_recover_with_usb_key", { newPassword });
+}
+
+export async function getWatchdogStatus(): Promise<WatchdogStatusDto> {
+  return invoke("cmd_get_watchdog_status");
+}
+
+export async function getSystemInfo(): Promise<SystemInfoDto> {
+  return invoke("cmd_get_system_info");
+}
+
+export async function showWidget(targetType: string, targetId: string, displayName: string): Promise<void> {
+  return invoke("cmd_show_widget", { targetType, targetId, displayName });
+}
+
+export async function hideWidget(): Promise<void> {
+  return invoke("cmd_hide_widget");
+}
+
+export async function widgetUnlock(password: string): Promise<void> {
+  return invoke("cmd_widget_unlock", { password });
+}
+
+export async function widgetListLocked(): Promise<{ target_type: string; target_id: string; display_name: string }[]> {
+  return invoke("cmd_widget_list_locked");
 }
 
 export async function checkForUpdates(): Promise<{ available: boolean; version?: string; notes?: string } | null> {

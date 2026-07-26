@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-26T16:00:00Z",
-  "version": "v0.0.7",
-  "notes": "Stable signing key. All recovery methods verified. Auto-update chain proven.",
+  "pub_date": "2026-07-26T18:15:00Z",
+  "version": "v0.0.8",
+  "notes": "Redesigned app icon with anti-aliased shield+lock. All 16 bug fixes included.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.7/OmniLock_0.0.7_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRbEF6MENyWW5VUkZXVVErd1JHd0JjbnVhK21MdzN4b0FDMjNaMHpQcUhRbUVQRGxVajZrdE50Ny9JVFNHVlJRLzRJU3VDdm9pUzhGMFB2SDlvQjUrYWZSMTBiUEp2NEFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDY1MzQ1CWZpbGU6T21uaUxvY2tfMC4wLjdfeDY0LXNldHVwLmV4ZQppaHRBR1hwbzB4cjdXSWtsd0VRaitZWlN2Y1JubmtKMElmaWxOTnVzK0o3RHl0Q0xMZjFiWDd3WE9Gb3lYbCtYMEI2aERNQVNxZXpTRkFZTzBKNi9EUT09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.8/OmniLock_0.0.8_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRbEF6MENyWW5VUk9UTWZ5S3M3N1JvSGdxUEhiUFNUL0RDeE1DakVrbG9SMERPVWJGalQzSHFRUGR1ODZaTU1nYXlaeWVYc0lJYXNzUFFTYkd6aDZlQWRoaTJLbmNVVmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDY4OTI5CWZpbGU6T21uaUxvY2tfMC4wLjhfeDY0LXNldHVwLmV4ZQpHNk01dlVlTGxrZW1PWHRxTlQ2bXU0ZGZtb2I2WVZhNkZxdUFqWkNIcEp2UThRTUxJSHpzNnB6eVVqQmJsVHEzTEpJdlZUNUMzV3hhQVNFWlk4dUNDZz09Cg=="
     }
   }
 }

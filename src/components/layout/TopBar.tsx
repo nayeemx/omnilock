@@ -1,4 +1,4 @@
-import { Lock, Fingerprint, Zap } from "lucide-react";
+import { Lock, Fingerprint } from "lucide-react";
 
 export function TopBar({ onLockNow, totpEnabled }: { onLockNow: () => void; totpEnabled?: boolean }) {
   return (
@@ -19,9 +19,7 @@ export function TopBar({ onLockNow, totpEnabled }: { onLockNow: () => void; totp
         )}
       </div>
       <div className="flex items-center gap-3">
-        <button className="px-3 py-1.5 rounded-lg text-xs text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] border border-transparent hover:border-white/10 flex items-center gap-2">
-          <Zap className="w-3.5 h-3.5" /> Win + Alt + L
-        </button>
+        <span className="text-[10px] text-[color:var(--muted-foreground)]">Win + Alt + L</span>
         <button onClick={onLockNow}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan"
                 style={{ background: "var(--gradient-brand)" }}>

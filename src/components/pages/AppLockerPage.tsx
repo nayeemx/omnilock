@@ -3,7 +3,7 @@ import {
   ShieldCheck, ShieldAlert, Cpu, Activity,
   Search, Plus, RefreshCw, X,
 } from "lucide-react";
-import { listProcesses, addLockedApp, toggleLockedApp, removeLockedApp, type VaultConfigDto } from "../../lib/tauri-bridge";
+import { listProcesses, addLockedApp, toggleLockedApp, removeLockedApp, showWidget, type VaultConfigDto } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 import { Stat } from "../shared/Stat";
 import { StatusPill } from "../shared/StatusPill";
@@ -133,6 +133,10 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
               <Toggle on={app.enabled} onChange={(v) => handleToggle(app.name, v)} />
               <button onClick={() => handleRemove(app.name)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
                 <X className="w-4 h-4" />
+              </button>
+              <button onClick={() => showWidget("app", app.path, app.name)}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
+                Unlock
               </button>
             </div>
           ))}

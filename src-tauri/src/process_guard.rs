@@ -1,17 +1,26 @@
 use sysinfo::System;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::sync::{Mutex, OnceLock, atomic::{AtomicBool, Ordering}};
+use tauri::Emitter;
+use tauri::Manager;
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, SuspendThread, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ, PROCESS_SUSPEND_RESUME,
+    OpenProcess, TerminateProcess, PROCESS_TERMINATE,
 };
 
-use crate::models::LockedApp;
+use crate::models::{LockedApp, UnlockTarget};
 
-fn get_process_sha256(path: &str) -> Result<String, String> {
-    let data = fs::read(path).map_err(|e| format!("Cannot read binary: {}", e))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&data);
-    Ok(format!("{:x}", hasher.finalize()))
+static LOCKED_APPS: OnceLock<Mutex<Vec<LockedApp>>> = OnceLock::new();
+static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
+
+fn locked_apps_store() -> &'static Mutex<Vec<LockedApp>> {
+    LOCKED_APPS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub fn update_locked_apps(apps: Vec<LockedApp>) {
+    if let Ok(mut guard) = locked_apps_store().lock() {
+        *guard = apps;
+    }
 }
 
 pub fn enumerate_processes() -> Vec<(String, String, String)> {
@@ -22,81 +31,93 @@ pub fn enumerate_processes() -> Vec<(String, String, String)> {
     for (_pid, process) in sys.processes() {
         let name = process.name().to_string();
         let path = process.exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-        let sha256 = get_process_sha256(&path).unwrap_or_default();
-        results.push((name, path, sha256));
+        results.push((name, path, String::new()));
     }
     results
 }
 
-pub fn suspend_process_by_path(app: &LockedApp) -> Result<(), String> {
-    let mut sys = System::new_all();
-    sys.refresh_processes();
-
-    for (pid, process) in sys.processes() {
-        let process_path = process.exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-        let process_name = process.name().to_string();
-
-        let path_match = process_path.eq_ignore_ascii_case(&app.path);
-        let name_match = process_name.eq_ignore_ascii_case(&app.name);
-
-        if path_match || name_match {
-            if !app.sha256.is_empty() {
-                let current_hash = get_process_sha256(&process_path).unwrap_or_default();
-                if current_hash != app.sha256 {
-                    continue;
-                }
-            }
-
-            unsafe {
-                let handle = OpenProcess(
-                    PROCESS_SUSPEND_RESUME | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                    0,
-                    pid.as_u32(),
-                );
-                if handle != 0 {
-                    let thread_id = windows_sys::Win32::System::Threading::GetProcessId(handle);
-                    if thread_id != 0 {
-                        let thandle = OpenProcess(
-                            PROCESS_SUSPEND_RESUME,
-                            0,
-                            thread_id,
-                        );
-                        if thandle != 0 {
-                            SuspendThread(thandle);
-                            windows_sys::Win32::Foundation::CloseHandle(thandle);
-                        }
-                    }
-                    windows_sys::Win32::Foundation::CloseHandle(handle);
-                    return Ok(());
-                }
-            }
-        }
-    }
-    Err("Process not found or cannot be suspended".to_string())
+pub fn compute_file_sha256(path: &str) -> Result<String, String> {
+    let data = fs::read(path).map_err(|e| format!("Cannot read binary: {}", e))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&data);
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub fn monitor_processes(locked_apps: Vec<LockedApp>) {
-    std::thread::spawn(move || loop {
-        let mut sys = System::new_all();
-        sys.refresh_processes();
+pub fn start_process_monitor(app_handle: tauri::AppHandle) {
+    if MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
 
-        for app in &locked_apps {
-            if !app.enabled {
-                continue;
-            }
+    std::thread::spawn(move || {
+        while MONITOR_RUNNING.load(Ordering::SeqCst) {
+            let apps = locked_apps_store().lock().map(|g| g.clone()).unwrap_or_default();
 
-            for (_pid, process) in sys.processes() {
-                let process_path = process.exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-                let process_name = process.name().to_string();
+            if !apps.is_empty() {
+                let mut sys = System::new_all();
+                sys.refresh_processes();
 
-                if process_path.eq_ignore_ascii_case(&app.path)
-                    || process_name.eq_ignore_ascii_case(&app.name)
-                {
-                    let _ = suspend_process_by_path(app);
+                for app in &apps {
+                    if !app.enabled {
+                        continue;
+                    }
+
+                    for (pid, process) in sys.processes() {
+                        let process_path = process.exe()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let process_name = process.name().to_string();
+
+                        let matches = process_path.eq_ignore_ascii_case(&app.path)
+                            || process_name.eq_ignore_ascii_case(&app.name);
+
+                        if matches {
+                            if !app.sha256.is_empty() {
+                                let current_hash = compute_file_sha256(&process_path)
+                                    .unwrap_or_default();
+                                if !current_hash.is_empty() && current_hash != app.sha256 {
+                                    continue;
+                                }
+                            }
+
+                            unsafe {
+                                let handle = OpenProcess(PROCESS_TERMINATE, 0, pid.as_u32());
+                                if handle != 0 {
+                                    TerminateProcess(handle, 1);
+                                    windows_sys::Win32::Foundation::CloseHandle(handle);
+                                }
+                            }
+
+                            let target = UnlockTarget {
+                                target_type: "app".to_string(),
+                                target_id: app.path.clone(),
+                                display_name: app.name.clone(),
+                            };
+
+                            if let Ok(mut guard) = crate::UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock() {
+                                *guard = Some(target.clone());
+                            }
+
+                            let _ = app_handle.emit("app-blocked", &target);
+
+                            if let Some(widget) = app_handle.get_webview_window("widget") {
+                                let _ = widget.show();
+                                let _ = widget.set_focus();
+                                let _ = widget.emit("unlock-target", &target);
+                            }
+
+                            break;
+                        }
+                    }
                 }
             }
+
+            std::thread::sleep(std::time::Duration::from_millis(1000));
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        MONITOR_RUNNING.store(false, Ordering::SeqCst);
     });
+}
+
+pub fn stop_process_monitor() {
+    MONITOR_RUNNING.store(false, Ordering::SeqCst);
 }
