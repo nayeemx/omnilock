@@ -1,6 +1,8 @@
 node_modules/
 dist/
 src-tauri/target/
+src-tauri/update.key
+src-tauri/update.key.pub
 *.log
 .DS_Store
 *.suo

@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## Product Requirements Document (PRD)
 
-**Document Version:** 1.2.0  
+**Document Version:** 1.3.0  
 **Product Name:** OmniLock  
 **Developer / Publisher:** InnologyBD (Featured in About dialog & Footer)  
 **Status:** Approved for Architectural Design & Implementation  
@@ -45,6 +45,7 @@ It features:
 | **FR-AUTH-03** | **AES-256-GCM Storage**: Config stored in encrypted vault (`vault.enc`) under `%APPDATA%\InnologyBD\OmniLock\` with AES-256-GCM. | **P0 (Critical)** |
 | **FR-AUTH-04** | **Two-Factor Authentication (TOTP)**: RFC 6238 TOTP engine with QR code generator & 2FA enforcement. | **P0 (Critical)** |
 | **FR-AUTH-05** | **Session Auto-Lock**: Configurable auto-lock timer (Immediate, 1 min, 5 min, 15 min, Screen Lock / Sleep). | **P0 (Critical)** |
+| **FR-AUTH-06** | **Auto-Update**: Check for and install updates from GitHub Releases with signed artifacts. | **P1 (High)** |
 
 ### 3.2 System Lockdown Presets & Installer Guard (FR-SYS-PRESET)
 

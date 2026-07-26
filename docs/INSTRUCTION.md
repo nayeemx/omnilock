@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## AI Developer Execution Blueprint & Technical Instruction Guide
 
-**Document Version:** 2.0.0
+**Document Version:** 2.1.0
 **Product Name:** OmniLock
 **Developer / Publisher:** InnologyBD
 **Target Execution Environment:** Rust 1.97+, Tauri v2, Node.js v26+, Windows SDK (Win32 API), MSVC 2022
@@ -62,15 +62,17 @@ omnilock/
 │       └── tauri-bridge.ts       # All Tauri IPC wrappers
 └── src-tauri/
     ├── Cargo.toml
-    ├── tauri.conf.json           # Window 1280×800, CSP allows data: URIs
+    ├── tauri.conf.json           # Window 1280×800, updater config, CSP allows data: URIs
     ├── build.rs
     ├── app.manifest              # UAC admin manifest
+    ├── update.key                # Private signing key (KEEP SECRET!)
+    ├── update.key.pub            # Public signing key (in tauri.conf.json)
     └── src/
         ├── main.rs               # Tauri runner
         ├── lib.rs                # All IPC handlers + app runner
         ├── vault.rs              # Argon2id+AES-GCM, recovery, migration
         ├── auth.rs               # Setup, unlock, answer verification
-        ├── totp.rs               # RFC 6238 TOTP with QR generation
+        ├── totp.rs               # RFC 6238 TOTP with base32 secrets + QR generation
         ├── process_guard.rs      # Process enumeration + real suspension
         ├── system_presets.rs     # All 6 presets + installer guard
         ├── installer_guard.rs    # MSI/setup process killer

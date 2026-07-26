@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## System Architecture & Technical Specification
 
-**Document Version:** 2.0.0
+**Document Version:** 2.1.0
 **Product Name:** OmniLock
 **Developer / Publisher:** InnologyBD
 **Target Platform:** Windows 10/11 x64
@@ -126,7 +126,7 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_toggle_locked_app` | `name, enabled` | `Result<(), String>` | Toggle app in config |
 | `cmd_add_locked_app` | `name, path, sha256` | `Result<(), String>` | Add app to lock list |
 | `cmd_remove_locked_app` | `name` | `Result<(), String>` | Remove app from lock list |
-| `cmd_generate_totp` | None | `Result<String, String>` | Generate base64 TOTP secret |
+| `cmd_generate_totp` | None | `Result<String, String>` | Generate base32 TOTP secret |
 | `cmd_generate_totp_qr` | `secret` | `Result<String, String>` | Generate QR as data URI |
 | `cmd_verify_totp` | `secret, code` | `Result<bool, String>` | Verify TOTP code |
 | `cmd_enable_2fa` | `secret, code` | `Result<(), String>` | Enable TOTP in vault |

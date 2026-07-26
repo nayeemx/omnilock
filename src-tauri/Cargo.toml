@@ -1,0 +1,36 @@
+[package]
+name = "omnilock"
+version = "1.0.0"
+authors = ["InnologyBD <support@innologybd.com>"]
+edition = "2021"
+description = "OmniLock - Windows 11 App, Folder & File Locker by InnologyBD"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["tray-icon", "image-png"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.35", features = ["full"] }
+argon2 = { version = "0.5", features = ["std", "zeroize"] }
+aes-gcm = "0.10"
+totp-rs = { version = "5.5", features = ["qr"] }
+sha2 = "0.10"
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
+getrandom = "0.2"
+base64 = "0.21"
+base32 = "0.4"
+subtle = "2.5"
+sysinfo = "0.30"
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_WindowsAndMessaging"
+] }

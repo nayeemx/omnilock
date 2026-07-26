@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## Build, Environment Setup & Deployment Specification
 
-**Document Version:** 1.3.0  
+**Document Version:** 2.0.0  
 **Product Name:** OmniLock  
 **Developer / Publisher:** InnologyBD  
 **Target Platform:** Windows 11 (x64 / ARM64)  
@@ -69,13 +69,23 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "<public key from src-tauri/update.key.pub>",
+      "endpoints": [
+        "https://api.github.com/repos/nayeemx/omnilock/releases/latest"
+      ]
+    }
+  },
   "app": {
     "windows": [
       {
-        "title": "OmniLock - Security Manager",
-        "width": 1000,
-        "height": 680,
-        "resizable": false,
+        "title": "OmniLock - Enterprise Desktop Security",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
@@ -83,12 +93,13 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https: data:; style-src 'self' 'unsafe-inline';"
+      "csp": "default-src 'self'; img-src 'self' asset: https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -96,11 +107,60 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
     ],
     "resources": [],
     "copyright": "Copyright © 2026 InnologyBD. All rights reserved.",
-    "shortDescription": "OmniLock - Windows 11 App, Folder & File Locker by InnologyBD",
-    "longDescription": "Enterprise-grade Windows 11 application, folder, file, and drive locking system by InnologyBD."
+    "shortDescription": "OmniLock - Enterprise Desktop Security by InnologyBD",
+    "longDescription": "Zero-trust enterprise desktop security tool. Application, folder, file & drive locker with Argon2id, AES-256-GCM, TOTP 2FA, and dual-process watchdog. Windows 10/11."
   }
 }
 ```
 
 ---
-*End of BUILD_SETUP.md (OmniLock v1.3.0)*
+
+## 4. Signing Key Setup (Required for Auto-Updates)
+
+### Generate Key Pair
+```powershell
+cd D:\projects\code\omnilock
+npx tauri signer generate -w src-tauri\update.key
+# Enter a password when prompted (e.g., 229689)
+# Public key will be at src-tauri\update.key.pub
+```
+
+### Environment Variables for Signed Builds
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content src-tauri\update.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "229689"
+npx tauri build
+```
+
+### Key Files
+- **Private key:** `src-tauri/update.key` (KEEP SECRET!)
+- **Public key:** `src-tauri/update.key.pub` (goes in tauri.conf.json)
+- **Signatures:** `.sig` files generated during signed builds
+
+---
+
+## 5. GitHub Releases Setup
+
+### Create Release
+```powershell
+# Using GitHub CLI
+gh release create v1.0.0 --repo nayeemx/omnilock \
+  --title "OmniLock v1.0.0" \
+  --notes "Release notes here" \
+  --prerelease \
+  src-tauri/target/release/omnilock.exe \
+  src-tauri/target/release/bundle/msi/OmniLock_1.0.0_x64_en-US.msi \
+  src-tauri/target/release/bundle/nsis/OmniLock_1.0.0_x64-setup.exe \
+  src-tauri/target/release/bundle/msi/OmniLock_1.0.0_x64_en-US.msi.sig \
+  src-tauri/target/release/bundle/nsis/OmniLock_1.0.0_x64-setup.exe.sig
+```
+
+### Update Flow
+1. Bump version in `tauri.conf.json`
+2. Run signed build with env vars set
+3. Create GitHub Release with assets
+4. Users click "Check for Updates" in Security page
+
+---
+
+*End of BUILD_SETUP.md (OmniLock v2.0.0)*

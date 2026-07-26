@@ -12,6 +12,9 @@ npx tsc --noEmit
 cd src-tauri && cargo check && cd ..
 
 # Full build (outputs MSI, NSIS exe, portable zip)
+# For signed builds (required for auto-updates):
+$env:TAURI_SIGNING_PRIVATE_KEY="<key content>"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD="229689"
 npx tauri build
 ```
 
@@ -33,12 +36,24 @@ npx tauri build
 | Installer guard (blocks MSI/setup executables) | ✅ |
 | File & folder locking via Windows DACL (icacls) | ✅ |
 | Drive locking (DACL + NoDrives registry) | ✅ |
-| TOTP 2FA (RFC 6238, QR setup) | ✅ |
+| TOTP 2FA (RFC 6238, base32, QR setup) | ✅ |
 | Panic hotkey (Win+Alt+L) | ✅ |
 | Auto-lock timer | ✅ |
 | Self-monitoring watchdog (no external guard binary) | ✅ |
 | Vault versioning + transparent migration | ✅ |
+| Auto-update via GitHub Releases (signed) | ✅ |
 | Modular frontend (18 component files) | ✅ |
+
+## Auto-Update
+
+OmniLock supports automatic updates via GitHub Releases:
+
+1. Open OmniLock → Go to Security page
+2. Click "Check for Updates"
+3. If new version available → click "Install Update & Restart"
+4. App downloads, installs, and restarts
+
+For developers: updates must be signed with the Tauri signing key (`src-tauri/update.key`).
 
 ## Documentation
 
@@ -50,14 +65,19 @@ npx tauri build
 | `docs/ARCHITECTURE.md` | System design and technical specification |
 | `docs/INSTRUCTION.md` | How to add new features step-by-step |
 | `docs/SECURITY.md` | Encryption model and threat analysis |
+| `docs/BUILD_SETUP.md` | Environment setup |
 
 ## Build Output
 
 ```
-src-tauri/target/release/bundle/
-├── msi/OmniLock_1.0.0_x64_en-US.msi
-├── nsis/OmniLock_1.0.0_x64-setup.exe
-└── (portable zip)
+src-tauri/target/release/
+├── omniLock.exe                          # Portable
+├── bundle/
+│   ├── msi/OmniLock_1.0.0_x64_en-US.msi
+│   ├── msi/OmniLock_1.0.0_x64_en-US.msi.sig
+│   ├── nsis/OmniLock_1.0.0_x64-setup.exe
+│   └── nsis/OmniLock_1.0.0_x64-setup.exe.sig
+└── dist/OmniLock_1.0.0_x64.zip          # All-in-one package
 ```
 
 ## Dev Environment

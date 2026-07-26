@@ -1,0 +1,325 @@
+import { useState } from "react";
+import {
+  QrCode, KeyRound, Copy, ArrowRight, CheckCircle2,
+  AlertTriangle, Power, Activity, ShieldAlert, Download,
+} from "lucide-react";
+import {
+  generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock,
+  checkForUpdates, installUpdate,
+  type VaultConfigDto,
+} from "../../lib/tauri-bridge";
+import { SectionHeader } from "../shared/SectionHeader";
+
+type TwoFaState = "idle" | "setup" | "enabled";
+
+export function SecurityPage({ config, refresh }: { config: VaultConfigDto | null; refresh: () => Promise<void> }) {
+  const [twoFaState, setTwoFaState] = useState<TwoFaState>(
+    config?.totp_enabled ? "enabled" : "idle"
+  );
+  const [totpSecret, setTotpSecret] = useState("");
+  const [qrUri, setQrUri] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [autoLockMins, setAutoLockMins] = useState(config?.auto_lock_minutes ?? 5);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; notes?: string } | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [updateError, setUpdateError] = useState("");
+
+  const start2faSetup = async () => {
+    setTwoFaState("setup");
+    setError("");
+    setSuccess("");
+    setVerifyCode("");
+    try {
+      const s = await generateTotpSecret();
+      setTotpSecret(s);
+      const qr = await generateTotpQr(s);
+      setQrUri(qr);
+    } catch (e: any) {
+      setError("Failed to generate 2FA secret: " + e);
+      setTwoFaState("idle");
+    }
+  };
+
+  const handleEnable2FA = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      await enable2FA(totpSecret, verifyCode);
+      setTwoFaState("enabled");
+      setSuccess("Two-factor authentication enabled successfully!");
+      setTotpSecret("");
+      setQrUri("");
+      setVerifyCode("");
+      await refresh();
+    } catch (e: any) {
+      setError(String(e));
+    }
+    setLoading(false);
+  };
+
+  const handleDisable2FA = async () => {
+    if (!confirm("Disable two-factor authentication? Your vault will be less secure.")) return;
+    setLoading(true);
+    setError("");
+    try {
+      await disable2FA();
+      setTwoFaState("idle");
+      setSuccess("Two-factor authentication disabled.");
+      await refresh();
+    } catch (e: any) {
+      setError(String(e));
+    }
+    setLoading(false);
+  };
+
+  const cancelSetup = () => {
+    setTwoFaState("idle");
+    setTotpSecret("");
+    setQrUri("");
+    setVerifyCode("");
+    setError("");
+  };
+
+  const handleAutoLock = async (minutes: number) => {
+    setAutoLockMins(minutes);
+    try {
+      await setAutoLock(minutes);
+      await refresh();
+    } catch (e: any) {
+      setError("Failed to set auto-lock: " + e);
+    }
+  };
+
+  const handleCheckUpdate = async () => {
+    setUpdateChecking(true);
+    setUpdateError("");
+    setUpdateAvailable(null);
+    try {
+      const result = await checkForUpdates();
+      if (result?.available) {
+        setUpdateAvailable({ version: result.version || "Unknown", notes: result.notes });
+      } else {
+        setUpdateError("No updates available. You're running the latest version.");
+      }
+    } catch (e: any) {
+      setUpdateError("Failed to check for updates: " + e);
+    }
+    setUpdateChecking(false);
+  };
+
+  const handleInstallUpdate = async () => {
+    setUpdateInstalling(true);
+    setUpdateError("");
+    try {
+      await installUpdate();
+    } catch (e: any) {
+      setUpdateError("Failed to install update: " + e);
+      setUpdateInstalling(false);
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <SectionHeader
+        eyebrow="FR-AUTH · Argon2id + AES-256-GCM"
+        title="Security & 2FA"
+        subtitle="Zero-trust master credentials, RFC 6238 TOTP, and 3-tier recovery. Vault sealed with authenticated encryption."
+      />
+
+      <div className="grid lg:grid-cols-3 gap-5">
+        <div className="glass rounded-2xl p-6 lg:col-span-2">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-lg grid place-items-center" style={{ background: "color-mix(in oklab, var(--cyan) 15%, transparent)" }}>
+              <QrCode className="w-4 h-4 text-[color:var(--primary)]" />
+            </div>
+            <h3 className="font-semibold">Two-Factor Authentication</h3>
+            {twoFaState === "enabled" ? (
+              <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Enforced</span>
+            ) : (
+              <span className="ml-auto text-xs px-2 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10">Disabled</span>
+            )}
+          </div>
+          <p className="text-xs text-[color:var(--muted-foreground)] mb-5">Compatible with Google Authenticator, Authy, Microsoft Authenticator & 1Password.</p>
+
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-sm text-[color:var(--destructive)]">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="mb-4 p-3 rounded-lg bg-[color:var(--success)]/15 border border-[color:var(--success)]/30 text-sm text-[color:var(--success)]">
+              {success}
+            </div>
+          )}
+
+          {twoFaState === "enabled" && (
+            <div className="flex items-center gap-4">
+              <CheckCircle2 className="w-8 h-8 text-[color:var(--success)]" />
+              <div>
+                <div className="text-sm font-medium">2FA is active</div>
+                <div className="text-xs text-[color:var(--muted-foreground)]">Your vault requires a TOTP code on every unlock.</div>
+              </div>
+              <button onClick={handleDisable2FA} disabled={loading}
+                      className="ml-auto px-3 py-2 rounded-lg text-xs border border-[color:var(--destructive)]/30 text-[color:var(--destructive)] hover:bg-[color:var(--destructive)]/10 disabled:opacity-40">
+                {loading ? "Disabling..." : "Disable 2FA"}
+              </button>
+            </div>
+          )}
+
+          {twoFaState === "setup" && (
+            <div className="flex gap-6">
+              <div className="w-40 h-40 rounded-xl bg-white p-3 shrink-0 grid place-items-center">
+                {qrUri ? <img src={qrUri} alt="TOTP QR Code" className="w-full h-full" /> : <div className="text-xs text-gray-400">Generating QR...</div>}
+              </div>
+              <div className="flex-1 space-y-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">Secret Key</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-xs tracking-wider break-all">{totpSecret}</code>
+                    <button onClick={() => navigator.clipboard.writeText(totpSecret)} className="p-2 rounded-lg bg-white/[0.04] border border-white/10 hover:bg-white/[0.08]"><Copy className="w-4 h-4" /></button>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">Enter 6-digit code from your authenticator</div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <input value={verifyCode} onChange={e => setVerifyCode(e.target.value.replace(/\D/g, ""))} placeholder="000000" maxLength={6}
+                           className="text-3xl font-semibold tracking-[0.3em] bg-transparent outline-none w-40 placeholder:text-[color:var(--muted-foreground)]/30" />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={cancelSetup}
+                          className="px-4 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/10 hover:bg-white/[0.08]">
+                    Cancel
+                  </button>
+                  <button onClick={handleEnable2FA} disabled={!verifyCode || verifyCode.length !== 6 || loading}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
+                          style={{ background: "var(--gradient-brand)" }}>
+                    {loading ? "Verifying..." : "Verify & Enable 2FA"} <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {twoFaState === "idle" && (
+            <button onClick={start2faSetup}
+                    className="px-5 py-3 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan"
+                    style={{ background: "var(--gradient-brand)" }}>
+              <QrCode className="w-4 h-4" /> Enable Two-Factor Authentication
+            </button>
+          )}
+        </div>
+
+        <div className="glass rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <KeyRound className="w-5 h-5 text-[color:var(--violet)]" />
+            <h3 className="font-semibold">Recovery Tiers</h3>
+          </div>
+          <ol className="space-y-3">
+            {[
+              { n: 1, label: "Security Q&A", meta: config?.security_question ? "Configured" : "Not set", ok: !!config?.security_question },
+              { n: 2, label: "24-word Recovery Key", meta: config?.recovery_key ? "Generated · offline" : "Not generated", ok: !!config?.recovery_key },
+              { n: 3, label: "Trusted device pairing", meta: "Not configured", ok: false },
+            ].map(r => (
+              <li key={r.n} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+                <div className={`w-8 h-8 rounded-full grid place-items-center text-xs font-semibold ${r.ok ? "text-[color:var(--primary-foreground)]" : "text-[color:var(--muted-foreground)] bg-white/[0.05]"}`}
+                     style={r.ok ? { background: "var(--gradient-brand)" } : undefined}>
+                  {r.n}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm">{r.label}</div>
+                  <div className="text-xs text-[color:var(--muted-foreground)]">{r.meta}</div>
+                </div>
+                {r.ok ? <CheckCircle2 className="w-4 h-4 text-[color:var(--success)]" /> : <AlertTriangle className="w-4 h-4 text-[color:var(--warning)]" />}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-5">
+        <div className="glass rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Power className="w-5 h-5 text-[color:var(--warning)]" />
+            <h3 className="font-semibold">Panic Hotkey</h3>
+          </div>
+          <p className="text-xs text-[color:var(--muted-foreground)] mb-4">Instantly blanks the screen, mutes audio and locks the session.</p>
+          <div className="flex items-center gap-2">
+            {["Win", "Alt", "L"].map(k => (
+              <kbd key={k} className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm font-mono">{k}</kbd>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Activity className="w-5 h-5 text-[color:var(--primary)]" />
+            <h3 className="font-semibold">Session Auto-Lock</h3>
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {[
+              { label: "Immediate", value: 0 },
+              { label: "1 min", value: 1 },
+              { label: "5 min", value: 5 },
+              { label: "15 min", value: 15 },
+              { label: "30 min", value: 30 },
+            ].map(o => (
+              <button key={o.value} onClick={() => handleAutoLock(o.value)}
+                      className={`px-2 py-2 rounded-lg text-xs border transition ${
+                        autoLockMins === o.value
+                          ? "border-[color:var(--primary)]/50 bg-[color:var(--primary)]/10 text-[color:var(--primary)]"
+                          : "border-white/10 bg-white/[0.02] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                      }`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 pt-4 border-t border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
+            Vault stored at <code>%APPDATA%\InnologyBD\OmniLock\vault.enc</code>
+          </div>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Download className="w-5 h-5 text-[color:var(--success)]" />
+          <h3 className="font-semibold">Updates</h3>
+        </div>
+        <p className="text-xs text-[color:var(--muted-foreground)] mb-4">Check for and install updates from GitHub Releases.</p>
+        
+        {updateError && (
+          <div className="mb-3 p-3 rounded-lg bg-[color:var(--muted)]/20 border border-[color:var(--border)] text-sm text-[color:var(--muted-foreground)]">
+            {updateError}
+          </div>
+        )}
+        
+        {updateAvailable ? (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-[color:var(--success)]/10 border border-[color:var(--success)]/30">
+              <div className="text-sm font-medium text-[color:var(--success)]">Update available: v{updateAvailable.version}</div>
+              {updateAvailable.notes && (
+                <div className="text-xs text-[color:var(--muted-foreground)] mt-1">{updateAvailable.notes}</div>
+              )}
+            </div>
+            <button onClick={handleInstallUpdate} disabled={updateInstalling}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
+                    style={{ background: "var(--gradient-brand)" }}>
+              {updateInstalling ? "Installing..." : "Install Update & Restart"}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleCheckUpdate} disabled={updateChecking}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] disabled:opacity-40 flex items-center gap-2">
+            {updateChecking ? "Checking..." : "Check for Updates"}
+            <Download className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

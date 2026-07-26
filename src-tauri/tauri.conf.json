@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OmniLock",
+  "version": "1.0.0",
+  "identifier": "com.innologybd.omnilock",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFBNTIzNkFERkI3RkYyNEEKUldSSzhuLzdyVFpTcWdTNVhvRlF4Zy92ME02WjJveVZLS3VtSFFLaFNqYk8zU2FFbk52cFpvTk4K",
+      "endpoints": [
+        "https://api.github.com/repos/nayeemx/omnilock/releases/latest"
+      ]
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OmniLock - Enterprise Desktop Security",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "resources": [],
+    "copyright": "Copyright © 2026 InnologyBD. All rights reserved.",
+    "shortDescription": "OmniLock - Enterprise Desktop Security by InnologyBD",
+    "longDescription": "Zero-trust enterprise desktop security tool. Application, folder, file & drive locker with Argon2id, AES-256-GCM, TOTP 2FA, and dual-process watchdog. Windows 10/11."
+  }
+}

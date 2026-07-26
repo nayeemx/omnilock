@@ -1,6 +1,6 @@
 # OmniLock - Security Specification
 
-**Document Version:** 2.0.0
+**Document Version:** 2.1.0
 
 ---
 
@@ -29,6 +29,7 @@
 - **Digits:** 6
 - **Period:** 30 seconds
 - **Tolerance:** 1 time-step (past and future)
+- **Secret Encoding:** Base32 (RFC 4648) — compatible with all major authenticator apps
 
 ---
 

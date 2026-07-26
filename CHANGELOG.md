@@ -4,6 +4,30 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [1.0.1] - 2026-07-26
+
+### Added
+- Auto-update system via GitHub Releases (tauri-plugin-updater)
+- "Check for Updates" button in Security page
+- Signed update artifacts (.sig files) for secure updates
+- `tauri-plugin-updater` and `tauri-plugin-process` dependencies
+
+### Fixed
+- 2FA TOTP secret encoding: changed from base64 to base32 (RFC 4648) — authenticator apps now work correctly
+- 2FA setup in SetupWizard: removed broken `enable2FA` call after `setupVault` (no session state during setup)
+- 2FA flow is now sequential: Enable button → QR → scan → code → verify → enabled → disable option
+- TOTP code input now enforces 6-digit numeric only
+
+### Changed
+- SetupWizard simplified to 2 steps (password + security question) — 2FA enabled after first login from Security page
+- SecurityPage uses clean state machine: `idle` → `setup` → `enabled`
+
+### Security
+- TOTP secrets now use base32 encoding for authenticator app compatibility
+- Update artifacts signed with Ed25519 key pair
+
+---
+
 ## [1.0.0] - 2026-07-26
 
 ### Added
@@ -61,7 +85,7 @@ Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 | Vault encrypt/decrypt | ✅ Real | Build only |
 | Vault recover (password reset) | ✅ Real | UI wired, no E2E |
 | Vault migration framework | ✅ Real | New — untested |
-| 2FA setup/enable/disable | ✅ Real | QR display works |
+| 2FA setup/enable/disable | ✅ Real | Base32 encoding verified |
 | Process scan + lock/toggle/remove | ✅ Real | IPC wired |
 | System presets (all 6) | ✅ Real | Registry needs admin |
 | Installer guard | ✅ Real | Not tested |
@@ -71,10 +95,11 @@ Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 | Process suspension | ✅ Real | Needs admin |
 | Watchdog (self-monitoring) | ✅ Real | Cannot easily test |
 | Password reset UI flow | ✅ Real | TypeScript compiles |
+| Auto-update (GitHub Releases) | ✅ Real | Signed builds |
 | Frontend modular structure | ✅ Done | — |
 | Inline error/success feedback | ✅ Done | All pages |
 | Controlled Toggle component | ✅ Done | Parent-driven |
-| 2FA flow (button→QR→verify) | ✅ Done | No bypass |
+| 2FA flow (button→QR→verify) | ✅ Done | Sequential |
 | Dark glassmorphism UI | ✅ Done | Visual |
 | Sidebar + TopBar + 4 tabs | ✅ Done | Visual |
 

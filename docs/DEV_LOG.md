@@ -16,8 +16,8 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 | Auth setup | `auth.rs` | ✅ Complete | Argon2id hash + recovery save |
 | Auth unlock | `auth.rs` | ✅ Complete | Password + TOTP verify, migration on unlock |
 | Answer verification | `auth.rs` | ✅ Complete | Constant-time comparison via `subtle` |
-| TOTP secret gen | `totp.rs` | ✅ Complete | 20 random bytes, base64 |
-| TOTP QR gen | `totp.rs` | ✅ Complete | PNG data URI via qrcode crate |
+| TOTP secret gen | `totp.rs` | ✅ Complete | 20 random bytes, **base32** encoded |
+| TOTP QR gen | `totp.rs` | ✅ Complete | PNG data URI via totp-rs crate |
 | TOTP verify | `totp.rs` | ✅ Complete | RFC 6238, SHA-1, 30s step |
 | Process enumeration | `process_guard.rs` | ✅ Complete | sysinfo + SHA-256 hash per binary |
 | Process suspension | `process_guard.rs` | ✅ Complete | SuspendThread FFI |
@@ -39,6 +39,46 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 ---
 
 ## Issue Log
+
+### 2FA TOTP Secret Encoding (Base64 vs Base32)
+**Date:** 2026-07-26
+**Symptoms:** 2FA could never be enabled — user scans QR, enters correct code, but verification always fails. The "Enable 2FA" button flow appears broken.
+**Root Cause:** `generate_totp_secret()` used base64 encoding, but authenticator apps (Google Authenticator, Authy, etc.) expect base32 encoding in otpauth URIs. When user scans QR, authenticator decodes the base64 string as base32 → different secret key → codes never match.
+**Solution:** Added `base32` crate dependency. Changed `generate_totp_secret()` to use `base32::encode()`. Changed `create_totp()` to use `Secret::Encoded()` for proper base32 decoding. All TOTP functions now expect/return base32-encoded secrets.
+**Files Changed:** `src-tauri/src/totp.rs`, `src-tauri/Cargo.toml`
+**Prevention:** TOTP standards (RFC 6238) and otpauth URI scheme require base32 encoding. Never use base64 for TOTP secrets.
+
+---
+
+### 2FA SetupWizard Calling enable2FA Without Session
+**Date:** 2026-07-26
+**Symptoms:** During initial setup, clicking "Enable 2FA & Finish" fails with "Session not unlocked" error.
+**Root Cause:** `setupVault()` creates and encrypts the vault. Then `enable2FA()` tries to modify `state.vault_config` (in-memory config) via `cmd_enable_2fa`, but during setup there's no active session — `vault_config` is `None`.
+**Solution:** Simplified SetupWizard to 2 steps (password + security question). Removed 2FA from wizard entirely. 2FA is now enabled from Security page after first login.
+**Files Changed:** `src/components/auth/SetupWizard.tsx`, `src/components/types.ts`
+**Prevention:** Backend commands requiring `State<AppState>` cannot be called during vault setup. Features needing session state must be available only after unlock.
+
+---
+
+### Auto-Update System Implementation
+**Date:** 2026-07-26
+**Symptoms:** No update mechanism existed. Every fix required full uninstall + reinstall.
+**Root Cause:** Tauri updater plugin was not configured. No signing key, no update endpoint, no UI for checking updates.
+**Solution:** Added `tauri-plugin-updater` and `tauri-plugin-process` to Cargo.toml. Configured `tauri.conf.json` with GitHub Releases endpoint. Added "Check for Updates" button to SecurityPage. Generated Ed25519 signing key pair. Created signed builds with `.sig` files.
+**Files Changed:** `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `src-tauri/src/lib.rs`, `src/lib/tauri-bridge.ts`, `src/components/pages/SecurityPage.tsx`
+**Prevention:** For distributable applications, always implement an update mechanism from the start. Tauri's updater plugin is well-documented and straightforward to configure.
+
+---
+
+### Tauri Signer Key Generation (Interactive Input)
+**Date:** 2026-07-26
+**Symptoms:** `npx tauri signer generate` requires interactive password input, cannot be automated in shell scripts.
+**Root Cause:** The Tauri CLI uses `rpassword` for secure password input, which doesn't support piped input.
+**Solution:** User manually ran the command in PowerShell. Key stored at `src-tauri/update.key` with password `229689`. Public key at `src-tauri/update.key.pub`.
+**Files Changed:** `src-tauri/update.key`, `src-tauri/update.key.pub`
+**Prevention:** For CI/CD pipelines, use `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` environment variables instead of the interactive CLI.
+
+---
 
 ### QR Code Returning URL String Instead of PNG Data URI
 **Date:** 2026-07-26
