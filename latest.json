@@ -1,0 +1,11 @@
+{
+  "pub_date": "2026-07-26T14:00:00Z",
+  "version": "v0.0.3",
+  "notes": "Critical fixes: TOTP 2FA verification, setup auto-login, panic hotkey, footer version, auto-update endpoint",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.3/OmniLock_0.0.3_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTTGRCRTllUUF4RlJVTVh5bitPVEVyakpGcGZobWl2dnAyYkVLWmpVU1VjMmlTdGc3dVQ3emNpRGVoWHdhQXZMbmN2ZUk4QjJ2MStBS1dqTUw4YmZDTXBNMUZqdmkzK0EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDU0MDMwCWZpbGU6T21uaUxvY2tfMC4wLjNfeDY0LXNldHVwLmV4ZQpCNUxSTzNWUUQ0Um9QS2hvbVdLTFY5Q1ZWbW9OaFU2RFhxVXJMak50YU5LdjZPYnJTZ0EvUngxOVJmM0xTNHNpYnNPOWpWdXA3WkVVMGdiazdpdGdBZz09Cg=="
+    }
+  }
+}
