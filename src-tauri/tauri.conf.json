@@ -14,7 +14,7 @@
       "endpoints": [
         "https://raw.githubusercontent.com/nayeemx/omnilock/main/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE1MzEwMDc5M0QxMTc0OEIKUldTTGRCRTllUUF4RmZURFJxZ1UzdThNeGtmdFo5NWpHM1FwY3ZCRHpUR1ZYVHZMVDVpb21ta3AK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDMTE2NDQ5RUUxOTg0ODQKUldTRWhCbnVTV1FSZkV0SkJlM0REd25oV0JEZW9XQXJ4QU1DUTBxeWpNNTc3cjlBTU5NWmdOQ2wK"
     }
   },
   "app": {
