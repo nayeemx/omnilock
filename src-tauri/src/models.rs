@@ -20,6 +20,8 @@ pub struct VaultConfigDto {
     pub totp_enabled: bool,
     pub recovery_key: String,
     pub security_question: String,
+    pub usb_key_enabled: bool,
+    pub usb_key_drive_label: String,
 }
 
 impl From<&VaultConfig> for VaultConfigDto {
@@ -35,6 +37,8 @@ impl From<&VaultConfig> for VaultConfigDto {
             totp_enabled: config.totp_enabled,
             recovery_key: config.recovery_key.clone(),
             security_question: config.security_question.clone(),
+            usb_key_enabled: config.usb_key_enabled,
+            usb_key_drive_label: config.usb_key_drive_label.clone(),
         }
     }
 }
@@ -76,6 +80,12 @@ pub struct VaultConfig {
     pub locked_folders: Vec<String>,
     pub locked_drives: Vec<String>,
     pub auto_lock_minutes: u32,
+    #[serde(default)]
+    pub usb_key_enabled: bool,
+    #[serde(default)]
+    pub usb_key_drive_serial: u32,
+    #[serde(default)]
+    pub usb_key_drive_label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +134,9 @@ impl Default for VaultConfig {
             locked_folders: Vec::new(),
             locked_drives: Vec::new(),
             auto_lock_minutes: 5,
+            usb_key_enabled: false,
+            usb_key_drive_serial: 0,
+            usb_key_drive_label: String::new(),
         }
     }
 }

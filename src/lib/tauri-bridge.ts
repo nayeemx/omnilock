@@ -27,6 +27,8 @@ export interface VaultConfigDto {
   totp_enabled: boolean;
   recovery_key: string;
   security_question: string;
+  usb_key_enabled: boolean;
+  usb_key_drive_label: string;
 }
 
 export async function getVaultStatus(): Promise<VaultStatusDto> {
@@ -135,6 +137,36 @@ export async function getSecurityQuestion(): Promise<string> {
 
 export async function resetPassword(newPassword: string, answer: string): Promise<void> {
   return invoke("cmd_reset_password", { newPassword, answer });
+}
+
+export async function getRecoveryKey(): Promise<string> {
+  return invoke("cmd_get_recovery_key");
+}
+
+export async function recoverWithKey(newPassword: string, recoveryKey: string): Promise<void> {
+  return invoke("cmd_recover_with_key", { newPassword, recoveryKey });
+}
+
+export interface UsbDriveInfo {
+  letter: string;
+  label: string;
+  serial: number;
+}
+
+export async function listUsbDrives(): Promise<UsbDriveInfo[]> {
+  return invoke("cmd_list_usb_drives");
+}
+
+export async function enrollUsbKey(driveLetter: string): Promise<void> {
+  return invoke("cmd_enroll_usb_key", { driveLetter });
+}
+
+export async function removeUsbKey(): Promise<void> {
+  return invoke("cmd_remove_usb_key");
+}
+
+export async function detectUsbKey(): Promise<string | null> {
+  return invoke("cmd_detect_usb_key");
 }
 
 export async function checkForUpdates(): Promise<{ available: boolean; version?: string; notes?: string } | null> {

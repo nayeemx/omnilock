@@ -51,6 +51,145 @@ pub fn register_panic_hotkey() -> Result<(), String> {
     Ok(())
 }
 
+unsafe fn do_lock_workstation() {
+    extern "system" {
+        fn GetModuleHandleA(name: *const u8) -> isize;
+        fn GetProcAddress(module: isize, name: *const u8) -> usize;
+    }
+
+    let user32 = GetModuleHandleA(b"user32.dll\0".as_ptr());
+    if user32 == 0 { return; }
+
+    let addr = GetProcAddress(user32, b"LockWorkStation\0".as_ptr());
+    if addr == 0 { return; }
+
+    type LockWorkStationFn = unsafe extern "system" fn() -> i32;
+    let lock_fn: LockWorkStationFn = std::mem::transmute(addr);
+    lock_fn();
+}
+
+unsafe fn do_mute_audio() {
+    extern "system" {
+        fn CoInitializeEx(pvReserved: *mut core::ffi::c_void, dwCoInit: u32) -> i32;
+        fn CoCreateInstance(
+            rclsid: *const core::ffi::c_void,
+            pUnkOuter: *mut core::ffi::c_void,
+            dwClsContext: u32,
+            riid: *const core::ffi::c_void,
+            ppv: *mut *mut core::ffi::c_void,
+        ) -> i32;
+        fn CoUninitialize();
+    }
+
+    const COINIT_APARTMENTTHREADED: u32 = 0x2;
+    const CLSCTX_ALL: u32 = 0x17;
+
+    let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
+    if hr < 0 && hr != -2147417850 {
+        return;
+    }
+
+    // CLSID_MMDeviceEnumerator = {BCDE0395-E52F-467C-8E3D-C4579291692E}
+    let clsid_mmdevenum: [u8; 16] = [
+        0x95, 0x03, 0xDE, 0xBC, 0x2F, 0xE5, 0x7C, 0x46,
+        0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E,
+    ];
+    // IID_IMMDeviceEnumerator = {A95664D2-9614-4F35-A746-DE8DB63617E6}
+    let iid_immdevenum: [u8; 16] = [
+        0xD2, 0x64, 0x56, 0xA9, 0x14, 0x96, 0x35, 0x4F,
+        0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6,
+    ];
+
+    let mut p_enumerator: *mut core::ffi::c_void = std::ptr::null_mut();
+    let hr = CoCreateInstance(
+        clsid_mmdevenum.as_ptr() as *const _,
+        std::ptr::null_mut(),
+        CLSCTX_ALL,
+        iid_immdevenum.as_ptr() as *const _,
+        &mut p_enumerator,
+    );
+    if hr < 0 || p_enumerator.is_null() {
+        CoUninitialize();
+        return;
+    }
+
+    // COM vtable: pointer-to-pointer. Get the vtable (array of fn ptrs).
+    let vtable = *(p_enumerator as *const *const *const core::ffi::c_void);
+
+    // IMMDeviceEnumerator vtable: 0=QI, 1=AddRef, 2=Release, 3=EnumAudioEndpoints, 4=GetDefaultAudioEndpoint
+    type GetDefaultAudioEndpointFn = unsafe extern "system" fn(*mut core::ffi::c_void, i32, u32, *mut *mut core::ffi::c_void) -> i32;
+    let get_default: GetDefaultAudioEndpointFn = std::mem::transmute(*vtable.add(4));
+
+    let mut p_device: *mut core::ffi::c_void = std::ptr::null_mut();
+    let hr = get_default(p_enumerator, 0, 0, &mut p_device); // eRender=0, eMultimedia=0
+    if hr < 0 || p_device.is_null() {
+        type ReleaseFn = unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
+        let release: ReleaseFn = std::mem::transmute(*vtable.add(2));
+        release(p_enumerator);
+        CoUninitialize();
+        return;
+    }
+
+    // IID_IAudioEndpointVolume = {5CDF2C82-841E-4546-9722-0CF74078229A}
+    let iid_audioepvol: [u8; 16] = [
+        0x82, 0x2C, 0xC5, 0x5C, 0x1E, 0x84, 0x46, 0x45,
+        0x97, 0x22, 0x0C, 0xF7, 0x40, 0x78, 0x22, 0x9A,
+    ];
+
+    // IMMDevice vtable: 0=QI, 1=AddRef, 2=Release, 3=Activate, ...
+    let device_vtable = *(p_device as *const *const *const core::ffi::c_void);
+    type ActivateFn = unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const core::ffi::c_void,
+        u32,
+        *mut core::ffi::c_void,
+        *mut *mut core::ffi::c_void,
+    ) -> i32;
+    let activate: ActivateFn = std::mem::transmute(*device_vtable.add(3));
+
+    let mut p_volume: *mut core::ffi::c_void = std::ptr::null_mut();
+    let hr = activate(
+        p_device,
+        iid_audioepvol.as_ptr() as *const _,
+        0x1, // CLSCTX_INPROC_SERVER
+        std::ptr::null_mut(),
+        &mut p_volume,
+    );
+
+    if hr >= 0 && !p_volume.is_null() {
+        // IAudioEndpointVolume vtable: 0=QI,1=AddRef,2=Release,
+        // 3=NotifRegPtr,4=QueryHWSupport,5=GetVolumeRange,6=SetMasterVolScalar,
+        // 7=GetMasterVolScalar,8=SetMasterVolLevel,9=GetMasterVolLevel,
+        // 10=SetMute
+        let vol_vtable = *(p_volume as *const *const *const core::ffi::c_void);
+        type SetMuteFn = unsafe extern "system" fn(*mut core::ffi::c_void, i32, *const GUID) -> i32;
+        let set_mute: SetMuteFn = std::mem::transmute(*vol_vtable.add(10));
+        set_mute(p_volume, 1, std::ptr::null()); // TRUE = mute
+
+        type VolReleaseFn = unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
+        let vol_release: VolReleaseFn = std::mem::transmute(*vol_vtable.add(2));
+        vol_release(p_volume);
+    }
+
+    type DeviceReleaseFn = unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
+    let device_release: DeviceReleaseFn = std::mem::transmute(*device_vtable.add(2));
+    device_release(p_device);
+
+    type EnumReleaseFn = unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
+    let enum_release: EnumReleaseFn = std::mem::transmute(*vtable.add(2));
+    enum_release(p_enumerator);
+
+    CoUninitialize();
+}
+
+#[repr(C)]
+struct GUID {
+    data1: u32,
+    data2: u16,
+    data3: u16,
+    data4: [u8; 8],
+}
+
 pub fn start_hotkey_listener() {
     std::thread::spawn(|| unsafe {
         extern "system" {
@@ -77,6 +216,8 @@ pub fn start_hotkey_listener() {
             if result == 0 || result == -1 { break; }
             if msg.message == WM_HOTKEY {
                 PANIC_ACTIVE.store(true, Ordering::SeqCst);
+                do_mute_audio();
+                do_lock_workstation();
             }
             translate(&msg);
             dispatch(&msg);

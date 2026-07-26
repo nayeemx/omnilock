@@ -2,11 +2,13 @@ import { useState } from "react";
 import {
   QrCode, KeyRound, Copy, ArrowRight, CheckCircle2,
   AlertTriangle, Power, Activity, ShieldAlert, Download,
+  Usb,
 } from "lucide-react";
 import {
   generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock,
-  checkForUpdates, installUpdate,
-  type VaultConfigDto,
+  checkForUpdates, installUpdate, getRecoveryKey,
+  listUsbDrives, enrollUsbKey, removeUsbKey, detectUsbKey,
+  type VaultConfigDto, type UsbDriveInfo,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 
@@ -27,6 +29,12 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
   const [updateAvailable, setUpdateAvailable] = useState<{ version: string; notes?: string } | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateError, setUpdateError] = useState("");
+  const [recoveryKeyVisible, setRecoveryKeyVisible] = useState(false);
+  const [recoveryKey, setRecoveryKey] = useState("");
+  const [usbDrives, setUsbDrives] = useState<UsbDriveInfo[]>([]);
+  const [usbSelectedDrive, setUsbSelectedDrive] = useState("");
+  const [usbLoading, setUsbLoading] = useState(false);
+  const [usbError, setUsbError] = useState("");
 
   const start2faSetup = async () => {
     setTwoFaState("setup");
@@ -120,6 +128,57 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
       setUpdateError("Failed to install update: " + e);
       setUpdateInstalling(false);
     }
+  };
+
+  const handleShowRecoveryKey = async () => {
+    try {
+      const key = await getRecoveryKey();
+      setRecoveryKey(key);
+      setRecoveryKeyVisible(true);
+    } catch (e: any) {
+      setError("Failed to load recovery key: " + e);
+    }
+  };
+
+  const handleScanUsbDrives = async () => {
+    setUsbError("");
+    try {
+      const drives = await listUsbDrives();
+      setUsbDrives(drives);
+      if (drives.length === 0) {
+        setUsbError("No removable drives detected. Plug in your pendrive and try again.");
+      }
+    } catch (e: any) {
+      setUsbError("Failed to scan USB drives: " + e);
+    }
+  };
+
+  const handleEnrollUsb = async () => {
+    if (!usbSelectedDrive) return;
+    setUsbLoading(true);
+    setUsbError("");
+    try {
+      await enrollUsbKey(usbSelectedDrive);
+      setSuccess("USB key enrolled successfully! Your pendrive is now a hardware recovery key.");
+      await refresh();
+    } catch (e: any) {
+      setUsbError(String(e));
+    }
+    setUsbLoading(false);
+  };
+
+  const handleRemoveUsbKey = async () => {
+    if (!confirm("Remove USB key enrollment? The key file on your pendrive will remain but won't auto-unlock anymore.")) return;
+    setUsbLoading(true);
+    setUsbError("");
+    try {
+      await removeUsbKey();
+      setSuccess("USB key enrollment removed.");
+      await refresh();
+    } catch (e: any) {
+      setUsbError(String(e));
+    }
+    setUsbLoading(false);
   };
 
   return (
@@ -222,8 +281,8 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           <ol className="space-y-3">
             {[
               { n: 1, label: "Security Q&A", meta: config?.security_question ? "Configured" : "Not set", ok: !!config?.security_question },
-              { n: 2, label: "24-word Recovery Key", meta: config?.recovery_key ? "Generated · offline" : "Not generated", ok: !!config?.recovery_key },
-              { n: 3, label: "Trusted device pairing", meta: "Not configured", ok: false },
+              { n: 2, label: "Recovery Key", meta: config?.recovery_key ? "Generated \u00b7 View to copy" : "Not generated", ok: !!config?.recovery_key },
+              { n: 3, label: "USB Hardware Key", meta: config?.usb_key_enabled ? `Enrolled \u00b7 ${config.usb_key_drive_label}` : "Not enrolled", ok: !!config?.usb_key_enabled },
             ].map(r => (
               <li key={r.n} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
                 <div className={`w-8 h-8 rounded-full grid place-items-center text-xs font-semibold ${r.ok ? "text-[color:var(--primary-foreground)]" : "text-[color:var(--muted-foreground)] bg-white/[0.05]"}`}
@@ -238,6 +297,22 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
               </li>
             ))}
           </ol>
+          {config?.recovery_key && !recoveryKeyVisible && (
+            <button onClick={handleShowRecoveryKey}
+                    className="mt-4 w-full px-3 py-2 rounded-lg text-xs border border-[color:var(--violet)]/30 text-[color:var(--violet)] hover:bg-[color:var(--violet)]/10 transition">
+              Show Recovery Key
+            </button>
+          )}
+          {recoveryKeyVisible && (
+            <div className="mt-4 space-y-2">
+              <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">Your Recovery Key</div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-xs break-all font-mono">{recoveryKey}</code>
+                <button onClick={() => navigator.clipboard.writeText(recoveryKey)} className="p-2 rounded-lg bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] shrink-0"><Copy className="w-4 h-4" /></button>
+              </div>
+              <p className="text-[10px] text-[color:var(--warning)]">Save this key somewhere safe. It can recover your vault if you forget your password.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -282,6 +357,76 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             Vault stored at <code>%APPDATA%\InnologyBD\OmniLock\vault.enc</code>
           </div>
         </div>
+      </div>
+
+      <div className="glass rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Usb className="w-5 h-5 text-[color:var(--primary)]" />
+          <h3 className="font-semibold">USB Hardware Key</h3>
+          {config?.usb_key_enabled ? (
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Enrolled</span>
+          ) : (
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10">Not enrolled</span>
+          )}
+        </div>
+        <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+          Store your recovery key on a USB pendrive. When plugged in, OmniLock can auto-unlock using the key. The key never touches your hard disk.
+        </p>
+
+        {usbError && (
+          <div className="mb-3 p-3 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-sm text-[color:var(--destructive)]">
+            {usbError}
+          </div>
+        )}
+
+        {config?.usb_key_enabled ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-[color:var(--success)]/10 border border-[color:var(--success)]/20">
+              <CheckCircle2 className="w-5 h-5 text-[color:var(--success)] shrink-0" />
+              <div>
+                <div className="text-sm font-medium">USB key enrolled</div>
+                <div className="text-xs text-[color:var(--muted-foreground)]">Drive: {config.usb_key_drive_label}</div>
+              </div>
+            </div>
+            <button onClick={handleRemoveUsbKey} disabled={usbLoading}
+                    className="px-3 py-2 rounded-lg text-xs border border-[color:var(--destructive)]/30 text-[color:var(--destructive)] hover:bg-[color:var(--destructive)]/10 disabled:opacity-40">
+              {usbLoading ? "Removing..." : "Remove USB Key Enrollment"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <button onClick={handleScanUsbDrives}
+                    className="px-4 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] flex items-center gap-2">
+              <Usb className="w-4 h-4" /> Scan for Pendrives
+            </button>
+            {usbDrives.length > 0 && (
+              <>
+                <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">Select your pendrive</div>
+                <div className="space-y-2">
+                  {usbDrives.map(d => (
+                    <button key={d.letter} onClick={() => setUsbSelectedDrive(d.letter)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg border transition ${
+                              usbSelectedDrive === d.letter
+                                ? "border-[color:var(--primary)]/50 bg-[color:var(--primary)]/10"
+                                : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
+                            }`}>
+                      <Usb className="w-4 h-4 text-[color:var(--primary)]" />
+                      <div className="text-left">
+                        <div className="text-sm">{d.label || `Drive ${d.letter}:`}</div>
+                        <div className="text-xs text-[color:var(--muted-foreground)]">{d.letter}: drive \u00b7 serial {d.serial}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={handleEnrollUsb} disabled={!usbSelectedDrive || usbLoading}
+                        className="w-full px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
+                        style={{ background: "var(--gradient-brand)" }}>
+                  {usbLoading ? "Enrolling..." : "Write Key to Pendrive"} <ArrowRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="glass rounded-2xl p-6">

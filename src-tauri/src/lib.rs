@@ -11,6 +11,8 @@ pub mod panic_hotkey;
 pub mod file_locker;
 pub mod drive_locker;
 pub mod watchdog;
+pub mod auto_lock;
+pub mod usb_key;
 
 use tauri::State;
 use std::sync::Mutex;
@@ -31,7 +33,7 @@ fn cmd_get_vault_status(_state: State<'_, AppState>) -> VaultStatusDto {
         initialized: vault::vault_exists(),
         totp_enabled,
         publisher: "InnologyBD".to_string(),
-        version: "1.0.0".to_string(),
+        version: "0.0.1".to_string(),
     }
 }
 
@@ -55,6 +57,7 @@ fn cmd_unlock_session(
     let token = auth::unlock_session(auth_payload.clone())?;
 
     let config = vault::decrypt_vault(&auth_payload.master_password)?;
+    let auto_lock_min = config.auto_lock_minutes;
 
     let mut session_guard = state.session_token.lock().map_err(|e| e.to_string())?;
     *session_guard = Some(token.clone());
@@ -64,6 +67,9 @@ fn cmd_unlock_session(
 
     let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
     *password_guard = Some(auth_payload.master_password);
+
+    auto_lock::set_auto_lock_minutes(auto_lock_min);
+    auto_lock::start_auto_lock_monitor();
 
     Ok(token)
 }
@@ -385,6 +391,8 @@ fn cmd_set_auto_lock(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
 
+    auto_lock::set_auto_lock_minutes(minutes);
+
     Ok(())
 }
 
@@ -392,6 +400,76 @@ fn cmd_set_auto_lock(
 fn cmd_get_security_question() -> Result<String, String> {
     let recovery = vault::load_vault_recovery()?;
     Ok(recovery.security_question)
+}
+
+#[tauri::command]
+fn cmd_get_recovery_key(state: State<'_, AppState>) -> Result<String, String> {
+    let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_ref().ok_or("Session not unlocked")?;
+    Ok(config.recovery_key.clone())
+}
+
+#[tauri::command]
+fn cmd_recover_with_key(
+    new_password: String,
+    recovery_key: String,
+) -> Result<(), String> {
+    vault::reset_password_with_key(&new_password, &recovery_key)
+}
+
+#[tauri::command]
+fn cmd_list_usb_drives() -> Vec<usb_key::UsbDriveInfo> {
+    usb_key::list_removable_drives()
+}
+
+#[tauri::command]
+fn cmd_enroll_usb_key(
+    state: State<'_, AppState>,
+    drive_letter: String,
+) -> Result<(), String> {
+    let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_ref().ok_or("Session not unlocked")?;
+    let recovery_key = config.recovery_key.clone();
+
+    let drive_info = usb_key::write_key_to_drive(&drive_letter, &recovery_key)?;
+
+    drop(config_guard);
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+    config.usb_key_enabled = true;
+    config.usb_key_drive_serial = drive_info.serial;
+    config.usb_key_drive_label = drive_info.label;
+
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_remove_usb_key(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+    config.usb_key_enabled = false;
+    config.usb_key_drive_serial = 0;
+    config.usb_key_drive_label = String::new();
+
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_detect_usb_key() -> Result<Option<String>, String> {
+    match usb_key::detect_usb_key(None) {
+        Some((_drive, key)) => Ok(Some(key)),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]
@@ -439,6 +517,12 @@ pub fn run() {
             cmd_list_processes,
             cmd_set_auto_lock,
             cmd_get_security_question,
+            cmd_get_recovery_key,
+            cmd_recover_with_key,
+            cmd_list_usb_drives,
+            cmd_enroll_usb_key,
+            cmd_remove_usb_key,
+            cmd_detect_usb_key,
             cmd_reset_password,
         ])
         .setup(|app| {
