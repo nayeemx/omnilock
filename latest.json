@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-26T14:30:00Z",
-  "version": "v0.0.4",
-  "notes": "Fixes: 2FA TOTP input missing on login after enabling 2FA; password reset now rejects reusing the same password",
+  "pub_date": "2026-07-26T15:00:00Z",
+  "version": "v0.0.5",
+  "notes": "Fixes: auto-update installer (NSIS installMode both), 2FA TOTP input on login, password reuse rejection on reset",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.4/OmniLock_0.0.4_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTRWhCbnVTV1FSZkhqUUxWdDgvWXVvVCtvNmNxSFNHRFYrelA1bnluemhzb0ZEbGg5YTU0T3hqdEdVZVFPMm0rWkVmWU94cFlyN0JlOFhnYXB4R09pcVppbFZ4N0UxUWdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDU3MDA4CWZpbGU6T21uaUxvY2tfMC4wLjRfeDY0LXNldHVwLmV4ZQpjcDBFWVUvYVNEVi83bjNWVUp0MzVyaUM4M2NraGNBR2VXTHd5WWpmMU1VTGFTVjhIWUNSWXJRaG5vQ2pERHBRN1A2WlBiOFhqTU5aaS9jNnU0NStEZz09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.5/OmniLock_0.0.5_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTRWhCbnVTV1FSZkY1aHBKSGlUaVVOVjdya05aTS9ESi9lZC8vY1UrYlZXOWY0S0pZYjFLWjRJdCtDNDQ1QkgwM1ppSjJ4QWRtN0IvOVUwTjhhVVlGSjNQcDRMbVk4Q1FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDU3NjYwCWZpbGU6T21uaUxvY2tfMC4wLjVfeDY0LXNldHVwLmV4ZQpzcmo5QmRqODlPeS85NFJKVG10SFRxQmdxcGpHZDgvdDhvVWdUU1F4Qkg3MTFGY2dJay93UWxob0Q3UExvN3FBd0d5WnkzNG42d2lWRHd3K1d5MUJBUT09Cg=="
     }
   }
 }
