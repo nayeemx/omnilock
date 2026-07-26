@@ -33,7 +33,7 @@ fn cmd_get_vault_status(_state: State<'_, AppState>) -> VaultStatusDto {
         initialized: vault::vault_exists(),
         totp_enabled,
         publisher: "InnologyBD".to_string(),
-        version: "0.0.5".to_string(),
+        version: "0.0.6".to_string(),
     }
 }
 
@@ -473,6 +473,13 @@ fn cmd_detect_usb_key() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn cmd_recover_with_usb_key(new_password: String) -> Result<(), String> {
+    let (_drive, recovery_key) = usb_key::detect_usb_key(None)
+        .ok_or("No OmniLock USB key detected. Insert your enrolled pendrive.")?;
+    vault::reset_password_with_key(&new_password, &recovery_key)
+}
+
+#[tauri::command]
 fn cmd_reset_password(
     new_password: String,
     answer: String,
@@ -523,6 +530,7 @@ pub fn run() {
             cmd_enroll_usb_key,
             cmd_remove_usb_key,
             cmd_detect_usb_key,
+            cmd_recover_with_usb_key,
             cmd_reset_password,
         ])
         .setup(|_app| {

@@ -388,10 +388,30 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
                 <div className="text-xs text-[color:var(--muted-foreground)]">Drive: {config.usb_key_drive_label}</div>
               </div>
             </div>
-            <button onClick={handleRemoveUsbKey} disabled={usbLoading}
-                    className="px-3 py-2 rounded-lg text-xs border border-[color:var(--destructive)]/30 text-[color:var(--destructive)] hover:bg-[color:var(--destructive)]/10 disabled:opacity-40">
-              {usbLoading ? "Removing..." : "Remove USB Key Enrollment"}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                setUsbLoading(true);
+                setUsbError("");
+                try {
+                  const key = await detectUsbKey();
+                  if (key) {
+                    setSuccess("USB key detected and verified! Recovery key can be read from this pendrive.");
+                  } else {
+                    setUsbError("No OmniLock USB key detected. Make sure your enrolled pendrive is plugged in.");
+                  }
+                } catch (e: any) {
+                  setUsbError("Test failed: " + e);
+                }
+                setUsbLoading(false);
+              }} disabled={usbLoading}
+                      className="px-3 py-2 rounded-lg text-xs bg-[color:var(--success)]/15 border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/25 disabled:opacity-40 flex items-center gap-1">
+                <Usb className="w-3 h-3" /> {usbLoading ? "Testing..." : "Test USB Key"}
+              </button>
+              <button onClick={handleRemoveUsbKey} disabled={usbLoading}
+                      className="px-3 py-2 rounded-lg text-xs border border-[color:var(--destructive)]/30 text-[color:var(--destructive)] hover:bg-[color:var(--destructive)]/10 disabled:opacity-40">
+                {usbLoading ? "Removing..." : "Remove USB Key Enrollment"}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">

@@ -22,6 +22,10 @@ pub struct VaultRecoveryData {
     pub security_answer_hash: Vec<u8>,
     pub encrypted_password: Vec<u8>,
     pub password_nonce: Vec<u8>,
+    #[serde(default)]
+    pub encrypted_password_with_key: Vec<u8>,
+    #[serde(default)]
+    pub key_nonce: Vec<u8>,
 }
 
 fn vault_path() -> PathBuf {
@@ -202,12 +206,16 @@ pub fn save_vault_recovery(
     answer_hash: &[u8],
     encrypted_pw: &[u8],
     nonce: &[u8],
+    encrypted_pw_with_key: &[u8],
+    key_nonce: &[u8],
 ) -> Result<(), String> {
     let data = VaultRecoveryData {
         security_question: question.to_string(),
         security_answer_hash: answer_hash.to_vec(),
         encrypted_password: encrypted_pw.to_vec(),
         password_nonce: nonce.to_vec(),
+        encrypted_password_with_key: encrypted_pw_with_key.to_vec(),
+        key_nonce: key_nonce.to_vec(),
     };
     let json = serde_json::to_vec(&data).map_err(|e| e.to_string())?;
     fs::write(recovery_path(), json).map_err(|e| e.to_string())?;
@@ -286,66 +294,52 @@ pub fn reset_password_with_key(new_password: &str, recovery_key: &str) -> Result
 
     let recovery = load_vault_recovery()?;
 
-    // The recovery key is stored as base64 of 32 random bytes.
-    // We can't derive the old password from it directly, but we can use it
-    // to decrypt the vault by trying it as the password itself.
-    // Actually, the recovery key is generated separately. We need to use it
-    // to decrypt the vault. Let's try using the recovery key as the password.
-    // But the vault is encrypted with the master password, not the recovery key.
-    //
-    // The proper approach: the recovery key is a backup password that can decrypt the vault.
-    // During setup, we generate a random key and store it. We also encrypt the vault
-    // with this key as an additional encryption layer, or we store the password encrypted
-    // with the answer hash.
-    //
-    // Since we already have the encrypted password in recovery data, and we can't decrypt
-    // it without the answer, the recovery key approach needs to work differently.
-    //
-    // Simple approach: the recovery key IS the password. We store it separately and
-    // the user can use it to unlock. But this requires encrypting the vault with the
-    // recovery key too.
-    //
-    // Practical approach for now: we'll decrypt the vault using the recovery key directly.
-    // This means during setup we also encrypt with the recovery key, or we store it
-    // in a way that can be used to decrypt.
-    //
-    // Let's use a simpler model: the recovery key is stored in the recovery file,
-    // and during reset, we try to decrypt the vault using the recovery key directly.
-    // If that works, we re-encrypt with the new password.
+    let key_material = derive_recovery_key_material(recovery_key);
 
-    match decrypt_vault(recovery_key) {
-        Ok(mut config) => {
-            let salt = generate_salt();
-            let password_hash = hash_password(new_password, &salt)?;
-            config.password_hash = password_hash;
-            config.password_salt = salt;
-            config.totp_enabled = false;
-            config.totp_secret = String::new();
-
-            encrypt_vault(&config, new_password)?;
-
-            // Update recovery data
-            let answer_hash = hash_answer(&recovery.security_question);
-            let (new_encrypted_pw, new_nonce) =
-                encrypt_bytes(new_password.as_bytes(), &answer_hash)?;
-            save_vault_recovery(
-                &recovery.security_question,
-                &recovery.security_answer_hash,
-                &new_encrypted_pw,
-                &new_nonce,
-            )?;
-            save_vault_meta(false)?;
-
-            Ok(())
-        }
-        Err(_) => {
-            // Recovery key doesn't decrypt vault directly.
-            // Try to find old password by decrypting recovery data.
-            // Since we can't, the recovery key approach won't work with current design.
-            // For now, return an error explaining the limitation.
-            Err("Recovery key does not match this vault. Use security question recovery instead.".to_string())
-        }
+    if recovery.encrypted_password_with_key.is_empty() {
+        return Err("This vault was created before recovery key support was available. Use security question recovery.".to_string());
     }
+
+    let old_pw_bytes = decrypt_bytes(
+        &recovery.encrypted_password_with_key,
+        &key_material,
+        &recovery.key_nonce,
+    )
+    .map_err(|_| "Invalid recovery key. Make sure you are using the correct key.".to_string())?;
+    let old_password = String::from_utf8(old_pw_bytes)
+        .map_err(|_| "Invalid recovery data format".to_string())?;
+
+    if new_password == old_password {
+        return Err("New password must be different from your current password.".to_string());
+    }
+
+    let mut config = decrypt_vault(&old_password)?;
+
+    let salt = generate_salt();
+    let password_hash = hash_password(new_password, &salt)?;
+    config.password_hash = password_hash;
+    config.password_salt = salt;
+    config.totp_enabled = false;
+    config.totp_secret = String::new();
+
+    encrypt_vault(&config, new_password)?;
+
+    let answer_hash = &recovery.security_answer_hash;
+    let (new_encrypted_pw, new_nonce) =
+        encrypt_bytes(new_password.as_bytes(), answer_hash)?;
+    let (new_encrypted_pw_key, new_key_nonce) =
+        encrypt_bytes(new_password.as_bytes(), &key_material)?;
+    save_vault_recovery(
+        &recovery.security_question,
+        answer_hash,
+        &new_encrypted_pw,
+        &new_nonce,
+        &new_encrypted_pw_key,
+        &new_key_nonce,
+    )?;
+    save_vault_meta(false)?;
+
+    Ok(())
 }
 
 fn rekey_vault(old_password: &str, new_password: &str, answer: &str) -> Result<(), String> {
@@ -364,13 +358,30 @@ fn rekey_vault(old_password: &str, new_password: &str, answer: &str) -> Result<(
     let new_answer_hash = hash_answer(answer);
     let (new_encrypted_pw, new_nonce) =
         encrypt_bytes(new_password.as_bytes(), &new_answer_hash)?;
+
+    let (new_encrypted_pw_key, new_key_nonce) = if !recovery.encrypted_password_with_key.is_empty() {
+        let key_material = derive_recovery_key_material(&config.recovery_key);
+        encrypt_bytes(new_password.as_bytes(), &key_material)?
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
     save_vault_recovery(
         &recovery.security_question,
         &new_answer_hash,
         &new_encrypted_pw,
         &new_nonce,
+        &new_encrypted_pw_key,
+        &new_key_nonce,
     )?;
     save_vault_meta(false)?;
 
     Ok(())
+}
+
+pub fn derive_recovery_key_material(recovery_key: &str) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(b"OMNILOCK-RECOVERY-KEY-DERIVE\0");
+    hasher.update(recovery_key.as_bytes());
+    hasher.finalize().to_vec()
 }

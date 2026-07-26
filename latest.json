@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-26T15:00:00Z",
-  "version": "v0.0.5",
-  "notes": "Fixes: auto-update installer (NSIS installMode both), 2FA TOTP input on login, password reuse rejection on reset",
+  "pub_date": "2026-07-26T15:30:00Z",
+  "version": "v0.0.6",
+  "notes": "Recovery key and USB key recovery now work. Forgot password offers 3 methods: security question, recovery key, USB hardware key. Test button added for enrolled USB keys.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.5/OmniLock_0.0.5_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTRWhCbnVTV1FSZkY1aHBKSGlUaVVOVjdya05aTS9ESi9lZC8vY1UrYlZXOWY0S0pZYjFLWjRJdCtDNDQ1QkgwM1ppSjJ4QWRtN0IvOVUwTjhhVVlGSjNQcDRMbVk4Q1FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDU3NjYwCWZpbGU6T21uaUxvY2tfMC4wLjVfeDY0LXNldHVwLmV4ZQpzcmo5QmRqODlPeS85NFJKVG10SFRxQmdxcGpHZDgvdDhvVWdUU1F4Qkg3MTFGY2dJay93UWxob0Q3UExvN3FBd0d5WnkzNG42d2lWRHd3K1d5MUJBUT09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.6/OmniLock_0.0.6_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTRWhCbnVTV1FSZk5ZWGdoK2ZDSVlUSW1KZ2F6bTYvenFsb3JheENtWDhXSUgwWitoZFlmTG1ESGxkQjRZT3pIN0dEbXo2WktXNlIzUktLTlA1bkhNb1FtZUs1cnBCOEFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDYxODA5CWZpbGU6T21uaUxvY2tfMC4wLjZfeDY0LXNldHVwLmV4ZQo5cU1PNDVQcG5lUjhUeW13Q1NjSlIvbkJnV0o3djRyclhybkRhS2kyNXdnQmw4R2VpMUlNYkJUL0tQNWlmUlpFUWJyRWxSYkJWbzVqanBrWnVoMUxBdz09Cg=="
     }
   }
 }

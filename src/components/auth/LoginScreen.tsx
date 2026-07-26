@@ -2,9 +2,15 @@ import { useState } from "react";
 import {
   Shield, ShieldCheck, Fingerprint, Activity,
   Lock, Eye, EyeOff, ArrowRight, CheckCircle2, HelpCircle, KeyRound,
+  Usb, FileKey,
 } from "lucide-react";
-import { unlockSession, getSecurityQuestion, resetPassword } from "../../lib/tauri-bridge";
+import {
+  unlockSession, getSecurityQuestion, resetPassword,
+  recoverWithKey, recoverWithUsbKey,
+} from "../../lib/tauri-bridge";
 import { Field } from "../shared/Field";
+
+type ResetMode = "select" | "question" | "recovery_key" | "usb_key";
 
 export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; onUnlock: () => void }) {
   const [password, setPassword] = useState("");
@@ -13,22 +19,23 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [showReset, setShowReset] = useState(false);
+  const [resetMode, setResetMode] = useState<ResetMode | null>(null);
   const [resetQuestion, setResetQuestion] = useState("");
   const [resetAnswer, setResetAnswer] = useState("");
+  const [resetRecoveryKey, setResetRecoveryKey] = useState("");
   const [resetNewPw, setResetNewPw] = useState("");
   const [resetConfirmPw, setResetConfirmPw] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState(false);
 
-  const handleResetStart = async () => {
+  const handleResetQuestion = async () => {
     setResetError("");
     setResetLoading(true);
     try {
       const q = await getSecurityQuestion();
       setResetQuestion(q);
-      setShowReset(true);
+      setResetMode("question");
     } catch (e: any) {
       setResetError(e);
     } finally {
@@ -66,10 +73,71 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
     }
   };
 
+  const handleRecoveryKeySubmit = async () => {
+    setResetError("");
+    if (!resetRecoveryKey || !resetNewPw) return;
+    if (resetNewPw !== resetConfirmPw) {
+      setResetError("Passwords do not match");
+      return;
+    }
+    if (resetNewPw.length < 8) {
+      setResetError("Password must be at least 8 characters");
+      return;
+    }
+    const hasUpper = /[A-Z]/.test(resetNewPw);
+    const hasLower = /[a-z]/.test(resetNewPw);
+    const hasDigit = /[0-9]/.test(resetNewPw);
+    const hasSymbol = /[^A-Za-z0-9]/.test(resetNewPw);
+    if (!hasUpper || !hasLower || !hasDigit || !hasSymbol) {
+      setResetError("Password must include uppercase, lowercase, numbers, and symbols");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await recoverWithKey(resetNewPw, resetRecoveryKey);
+      setResetSuccess(true);
+    } catch (e: any) {
+      setResetError(e);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleUsbKeySubmit = async () => {
+    setResetError("");
+    if (!resetNewPw) return;
+    if (resetNewPw !== resetConfirmPw) {
+      setResetError("Passwords do not match");
+      return;
+    }
+    if (resetNewPw.length < 8) {
+      setResetError("Password must be at least 8 characters");
+      return;
+    }
+    const hasUpper = /[A-Z]/.test(resetNewPw);
+    const hasLower = /[a-z]/.test(resetNewPw);
+    const hasDigit = /[0-9]/.test(resetNewPw);
+    const hasSymbol = /[^A-Za-z0-9]/.test(resetNewPw);
+    if (!hasUpper || !hasLower || !hasDigit || !hasSymbol) {
+      setResetError("Password must include uppercase, lowercase, numbers, and symbols");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await recoverWithUsbKey(resetNewPw);
+      setResetSuccess(true);
+    } catch (e: any) {
+      setResetError(e);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const handleResetCancel = () => {
-    setShowReset(false);
+    setResetMode(null);
     setResetQuestion("");
     setResetAnswer("");
+    setResetRecoveryKey("");
     setResetNewPw("");
     setResetConfirmPw("");
     setResetError("");
@@ -95,7 +163,155 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
     }
   };
 
-  const resetPwValid = resetNewPw.length >= 8 && resetNewPw === resetConfirmPw && resetAnswer.length > 0;
+  const resetPwValid = resetNewPw.length >= 8 && resetNewPw === resetConfirmPw
+    && (resetMode === "usb_key" || resetAnswer.length > 0)
+    && (resetMode !== "recovery_key" || resetRecoveryKey.length > 0);
+
+  const renderResetForm = () => {
+    if (resetMode === "question") {
+      return (
+        <div className="glass rounded-2xl p-6 space-y-4">
+          <div>
+            <label className="text-xs text-[color:var(--muted-foreground)] mb-1 block">Security question</label>
+            <div className="text-sm font-medium px-3 py-2.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--muted)]/30">
+              {resetQuestion}
+            </div>
+          </div>
+          <Field label="Your answer" icon={HelpCircle}>
+            <input value={resetAnswer} onChange={e => setResetAnswer(e.target.value)}
+                   placeholder="Enter your answer" autoFocus
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <Field label="New master password" icon={KeyRound}>
+            <input type="password" value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
+                   placeholder="Min 8 chars, upper+lower+number+symbol"
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <Field label="Confirm new password" icon={KeyRound}>
+            <input type="password" value={resetConfirmPw} onChange={e => setResetConfirmPw(e.target.value)}
+                   placeholder="Re-enter new password"
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <div className="flex gap-3 mt-2">
+            <button type="button" onClick={handleResetCancel}
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border border-[color:var(--border)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:border-[color:var(--foreground)]/30 transition">
+              Cancel
+            </button>
+            <button type="button" onClick={handleResetSubmit} disabled={resetLoading || !resetPwValid}
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
+                    style={{ background: "var(--gradient-brand)" }}>
+              {resetLoading ? "Resetting..." : "Reset password"}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (resetMode === "recovery_key") {
+      return (
+        <div className="glass rounded-2xl p-6 space-y-4">
+          <Field label="Recovery key" icon={FileKey}>
+            <input value={resetRecoveryKey} onChange={e => setResetRecoveryKey(e.target.value)}
+                   placeholder="Paste your recovery key" autoFocus
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)] font-mono" />
+          </Field>
+          <Field label="New master password" icon={KeyRound}>
+            <input type="password" value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
+                   placeholder="Min 8 chars, upper+lower+number+symbol"
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <Field label="Confirm new password" icon={KeyRound}>
+            <input type="password" value={resetConfirmPw} onChange={e => setResetConfirmPw(e.target.value)}
+                   placeholder="Re-enter new password"
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <div className="flex gap-3 mt-2">
+            <button type="button" onClick={handleResetCancel}
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border border-[color:var(--border)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:border-[color:var(--foreground)]/30 transition">
+              Cancel
+            </button>
+            <button type="button" onClick={handleRecoveryKeySubmit} disabled={resetLoading || !resetPwValid}
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
+                    style={{ background: "var(--gradient-brand)" }}>
+              {resetLoading ? "Resetting..." : "Reset password"}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (resetMode === "usb_key") {
+      return (
+        <div className="glass rounded-2xl p-6 space-y-4">
+          <div className="p-3 rounded-lg bg-[color:var(--primary)]/10 border border-[color:var(--primary)]/20 text-sm text-[color:var(--primary)]">
+            Insert your enrolled USB pendrive and click Reset.
+          </div>
+          <Field label="New master password" icon={KeyRound}>
+            <input type="password" value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
+                   placeholder="Min 8 chars, upper+lower+number+symbol"
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <Field label="Confirm new password" icon={KeyRound}>
+            <input type="password" value={resetConfirmPw} onChange={e => setResetConfirmPw(e.target.value)}
+                   placeholder="Re-enter new password"
+                   className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
+          </Field>
+          <div className="flex gap-3 mt-2">
+            <button type="button" onClick={handleResetCancel}
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border border-[color:var(--border)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:border-[color:var(--foreground)]/30 transition">
+              Cancel
+            </button>
+            <button type="button" onClick={handleUsbKeySubmit} disabled={resetLoading || !resetPwValid}
+                    className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
+                    style={{ background: "var(--gradient-brand)" }}>
+              {resetLoading ? "Resetting..." : "Reset with USB Key"}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <button onClick={handleResetQuestion} disabled={resetLoading}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition text-left">
+          <div className="w-10 h-10 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in oklab, var(--cyan) 15%, transparent)", color: "var(--cyan)" }}>
+            <HelpCircle className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-medium">Security Question</div>
+            <div className="text-xs text-[color:var(--muted-foreground)]">Answer your security question to reset</div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[color:var(--muted-foreground)] ml-auto" />
+        </button>
+        <button onClick={() => { setResetError(""); setResetMode("recovery_key"); }} disabled={resetLoading}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition text-left">
+          <div className="w-10 h-10 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in oklab, var(--violet) 15%, transparent)", color: "var(--violet)" }}>
+            <FileKey className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-medium">Recovery Key</div>
+            <div className="text-xs text-[color:var(--muted-foreground)]">Use your saved recovery key</div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[color:var(--muted-foreground)] ml-auto" />
+        </button>
+        <button onClick={() => { setResetError(""); setResetMode("usb_key"); }} disabled={resetLoading}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition text-left">
+          <div className="w-10 h-10 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in oklab, var(--success) 15%, transparent)", color: "var(--success)" }}>
+            <Usb className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-medium">USB Hardware Key</div>
+            <div className="text-xs text-[color:var(--muted-foreground)]">Plug in your enrolled pendrive</div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[color:var(--muted-foreground)] ml-auto" />
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 text-[color:var(--foreground)]">
@@ -149,7 +365,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
             <div className="text-lg font-semibold">OmniLock</div>
           </div>
 
-          {!showReset ? (
+          {!resetMode && !resetSuccess ? (
             <>
               <div className="mb-8">
                 <div className="text-[11px] uppercase tracking-widest text-[color:var(--primary)] mb-2">Welcome back</div>
@@ -189,9 +405,9 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
               </form>
 
               <div className="mt-4 text-center">
-                <button onClick={handleResetStart} disabled={resetLoading}
+                <button onClick={() => { setResetMode("select"); setResetError(""); }} disabled={resetLoading}
                         className="text-xs text-[color:var(--primary)] hover:underline disabled:opacity-50">
-                  {resetLoading ? "Loading..." : "Forgot password?"}
+                  Forgot password?
                 </button>
               </div>
 
@@ -204,12 +420,16 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
               <div className="mb-8">
                 <div className="text-[11px] uppercase tracking-widest text-[color:var(--primary)] mb-2">Account recovery</div>
                 <h2 className="text-3xl font-semibold tracking-tight">
-                  {resetSuccess ? "Password reset" : "Reset your password"}
+                  {resetSuccess ? "Password reset" : resetMode === "select" ? "Recovery method" : "Reset your password"}
                 </h2>
                 <p className="text-sm text-[color:var(--muted-foreground)] mt-2">
                   {resetSuccess
                     ? "Your master password has been reset. Two-factor authentication has been disabled for security. You can now sign in with your new password."
-                    : "Answer your security question to set a new master password. Two-factor authentication will be disabled after reset."}
+                    : resetMode === "select"
+                    ? "Choose how you want to recover your account. Two-factor authentication will be disabled after reset."
+                    : resetMode === "usb_key"
+                    ? "Insert your enrolled USB pendrive, then set a new master password."
+                    : "Provide your credentials to set a new master password."}
                 </p>
               </div>
 
@@ -220,45 +440,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
               )}
 
               {!resetSuccess ? (
-                <div className="glass rounded-2xl p-6 space-y-4">
-                  <div>
-                    <label className="text-xs text-[color:var(--muted-foreground)] mb-1 block">Security question</label>
-                    <div className="text-sm font-medium px-3 py-2.5 rounded-lg border border-[color:var(--border)] bg-[color:var(--muted)]/30">
-                      {resetQuestion}
-                    </div>
-                  </div>
-
-                  <Field label="Your answer" icon={HelpCircle}>
-                    <input value={resetAnswer} onChange={e => setResetAnswer(e.target.value)}
-                           placeholder="Enter your answer" autoFocus
-                           className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
-                  </Field>
-
-                  <Field label="New master password" icon={KeyRound}>
-                    <input type="password" value={resetNewPw} onChange={e => setResetNewPw(e.target.value)}
-                           placeholder="Min 8 characters, upper+lower+number+symbol"
-                           className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
-                  </Field>
-
-                  <Field label="Confirm new password" icon={KeyRound}>
-                    <input type="password" value={resetConfirmPw} onChange={e => setResetConfirmPw(e.target.value)}
-                           placeholder="Re-enter new password"
-                           className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
-                  </Field>
-
-                  <div className="flex gap-3 mt-2">
-                    <button type="button" onClick={handleResetCancel}
-                            className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border border-[color:var(--border)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:border-[color:var(--foreground)]/30 transition">
-                      Cancel
-                    </button>
-                    <button type="button" onClick={handleResetSubmit} disabled={resetLoading || !resetPwValid}
-                            className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
-                            style={{ background: "var(--gradient-brand)" }}>
-                      {resetLoading ? "Resetting..." : "Reset password"}
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+                renderResetForm()
               ) : (
                 <div className="glass rounded-2xl p-6 text-center space-y-4">
                   <div className="w-14 h-14 rounded-full mx-auto grid place-items-center" style={{ background: "color-mix(in oklab, oklch(0.65 0.18 145) 15%, transparent)" }}>

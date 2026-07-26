@@ -35,7 +35,7 @@ pub fn setup_vault(payload: SetupPayload) -> Result<(), String> {
     config.password_salt = salt;
     config.security_question = question.clone();
     config.security_answer_hash = answer_hash.clone();
-    config.recovery_key = recovery_key;
+    config.recovery_key = recovery_key.clone();
     config.totp_enabled = totp_enabled;
     config.totp_secret = payload.totp_secret;
 
@@ -44,11 +44,18 @@ pub fn setup_vault(payload: SetupPayload) -> Result<(), String> {
 
     let (encrypted_pw, pw_nonce) =
         vault::encrypt_bytes(payload.master_password.as_bytes(), &answer_hash)?;
+
+    let key_material = vault::derive_recovery_key_material(&recovery_key);
+    let (encrypted_pw_key, key_nonce) =
+        vault::encrypt_bytes(payload.master_password.as_bytes(), &key_material)?;
+
     vault::save_vault_recovery(
         &question,
         &answer_hash,
         &encrypted_pw,
         &pw_nonce,
+        &encrypted_pw_key,
+        &key_nonce,
     )?;
 
     Ok(())

@@ -169,6 +169,10 @@ export async function detectUsbKey(): Promise<string | null> {
   return invoke("cmd_detect_usb_key");
 }
 
+export async function recoverWithUsbKey(newPassword: string): Promise<void> {
+  return invoke("cmd_recover_with_usb_key", { newPassword });
+}
+
 export async function checkForUpdates(): Promise<{ available: boolean; version?: string; notes?: string } | null> {
   try {
     const update = await check();
