@@ -229,27 +229,34 @@ export async function checkForUpdates(): Promise<{ available: boolean; version?:
   }
 }
 
-export async function installUpdate(): Promise<void> {
-  const update = await check();
-  if (update) {
-    let downloaded = 0;
-    let contentLength = 0;
-    await update.downloadAndInstall((event) => {
-      switch (event.event) {
-        case "Started":
-          contentLength = event.data.contentLength || 0;
-          console.log(`Downloading ${contentLength} bytes...`);
-          break;
-        case "Progress":
-          downloaded += event.data.chunkLength;
-          console.log(`Downloaded ${downloaded}/${contentLength} bytes`);
-          break;
-        case "Finished":
-          console.log("Download complete, installing...");
-          break;
-      }
-    });
-    await relaunch();
+export async function installUpdate(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const update = await check();
+    if (update) {
+      let downloaded = 0;
+      let contentLength = 0;
+      await update.downloadAndInstall((event) => {
+        switch (event.event) {
+          case "Started":
+            contentLength = event.data.contentLength || 0;
+            console.log(`Downloading ${contentLength} bytes...`);
+            break;
+          case "Progress":
+            downloaded += event.data.chunkLength;
+            console.log(`Downloaded ${downloaded}/${contentLength} bytes`);
+            break;
+          case "Finished":
+            console.log("Download complete, installing...");
+            break;
+        }
+      });
+      relaunch();
+      return { success: true };
+    }
+    return { success: false, error: "No update available" };
+  } catch (e: any) {
+    console.error("Install failed:", e);
+    return { success: false, error: String(e) };
   }
 }
 

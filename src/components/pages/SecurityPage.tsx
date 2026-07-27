@@ -124,7 +124,11 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
     setUpdateInstalling(true);
     setUpdateError("");
     try {
-      await installUpdate();
+      const result = await installUpdate();
+      if (!result.success) {
+        setUpdateError("Failed to install update: " + (result.error || "Unknown error"));
+        setUpdateInstalling(false);
+      }
     } catch (e: any) {
       setUpdateError("Failed to install update: " + e);
       setUpdateInstalling(false);
@@ -491,7 +495,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             <button onClick={handleInstallUpdate} disabled={updateInstalling}
                     className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
                     style={{ background: "var(--gradient-brand)" }}>
-              {updateInstalling ? "Installing..." : "Install Update & Restart"}
+              {updateInstalling ? "Downloading & restarting..." : "Install Update & Restart"}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

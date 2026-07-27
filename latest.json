@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T00:00:00Z",
-  "version": "v0.1.3",
-  "notes": "GitHub Cloud Sync — real OAuth App with Device Flow enabled",
+  "pub_date": "2026-07-28T01:00:00Z",
+  "version": "v0.1.4",
+  "notes": "Fix: updater now relaunches app after install (no more manual restart). Error handling on update install.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.3/OmniLock_0.1.3_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1VITnNReHE5MmwxRWpQYStVRzE2YlM0MDJvbEpvSmk3OHRTTThLTmdEWVduV1lNNllybG1La0ZDMXhlTzJ4K2pYalNqRHU5ZEJjVWphVHJuSXo5S2dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTUyNTY5CWZpbGU6T21uaUxvY2tfMC4xLjNfeDY0LXNldHVwLmV4ZQpIMG9SUjA1Z1YrbVgrbGh3NnVKRzJjRFh0MkliNWxLeFpVS1RWNGJuQTdZZ0IwNzZWczc0NjZrdE52c1daS0J0amp6c1JsRytUdGU0Q2tWK2g5RExBdz09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.4/OmniLock_0.1.4_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1N3S1N2bXJuckdZN0lHcTFCUGxYSVRRVkQxZTRoQWtYbjNKamJhVmpzUGRiYUlxQlJuWVI4K2JQQ3VGTHh5eU5xY0VRci9aYi9IajZqSyt6OU9QUVFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTYxMDc5CWZpbGU6T21uaUxvY2tfMC4xLjRfeDY0LXNldHVwLmV4ZQpwdlFheUFJTitGWVY2amExMm5aQUFwNStwelQyZGVZVForREVCelZNeXVjQWc2UWFqWkpuVGYyNlRmQ1hYT0xxOXJ2cWkxKzBiM0NkaG9nb0s2ZTREQT09Cg=="
     }
   }
 }

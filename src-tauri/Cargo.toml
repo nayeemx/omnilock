@@ -1,6 +1,6 @@
 [package]
 name = "omnilock"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"
 description = "OmniLock - Windows 11 App, Folder & File Locker by InnologyBD"
