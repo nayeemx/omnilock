@@ -17,6 +17,8 @@
 
 2. **Light theme** (v0.1.1) — System `prefers-color-scheme` auto-detection, light oklch CSS variables, semantic `surface` tokens replacing hardcoded `bg-white/[0.04]`, light scrollbars.
 
+3. **Auto-updater signature fix** — `latest.json` now has real Ed25519 signature for v0.1.2 (was broken by placeholder). Signing keys are in `signing-keys/` folder.
+
 ---
 
 ## What Works (Verified)
@@ -70,6 +72,13 @@ npx tsc --noEmit
 
 # Create GitHub release (after build)
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "..." "path\to\OmniLock_X.Y.Z_x64-setup.exe#OmniLock_X.Y.Z_x64-setup.exe"
+
+# Sign installer for auto-updater (PRIVATE KEY IN signing-keys/ FOLDER)
+$key = Get-Content -Raw "signing-keys\update-v0.0.8.key"
+$env:TAURI_SIGNING_PRIVATE_KEY = $key
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
+# Then paste the printed signature into latest.json
 ```
 
 ---
