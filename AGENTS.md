@@ -4,10 +4,16 @@
 
 ## Current State
 
-- **Version**: 0.1.2 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.2)
+- **Version**: 0.1.3 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.3)
 - **Last Updated**: 2026-07-27
 - **Git**: clean, all changes committed on `main`
 - **Build**: compiles clean (0 Rust errors, 0 TS errors)
+
+---
+
+## What Was Just Done (v0.1.2 → v0.1.3)
+
+1. **GitHub Cloud Sync** — Replaced placeholder OAuth client ID with real one (`Ov23li9jwqq1jy88qziH`). Device Flow enabled. Users can now connect their GitHub account to backup/restore encrypted vault via Gists.
 
 ---
 
@@ -38,11 +44,10 @@
 
 | Issue | Blocker |
 |-------|---------|
-| GitHub OAuth | Placeholder client ID (`Ov23liplaceholder`), no real OAuth App registered |
+| GitHub OAuth | Client ID `Ov23li9jwqq1jy88qziH` registered, Device Flow enabled |
 | Unlock widget popup | Never tested end-to-end |
 | UI-level lock/unlock | Never tested from app GUI (only via pipe) |
 | Reinstall persistence | Never tested |
-| Auto-updater signature | ✅ | `latest.json` has correct Ed25519 signature |
 
 ---
 
@@ -150,6 +155,7 @@ omnilock/
 
 ## Version History
 
+- **0.1.3** — GitHub Cloud Sync (real OAuth App with Device Flow)
 - **0.1.2** — Icon consistency (same icon.png in taskbar + dashboard)
 - **0.1.1** — Light theme + system preference detection
 - **0.1.0** — Widget ACL fix, vault tests, shared crate, service fixes
