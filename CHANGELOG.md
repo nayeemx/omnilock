@@ -4,7 +4,7 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
-## [0.2.0] - 2026-07-27
+## [0.1.1] - 2026-07-27
 
 ### Added
 - Light theme support with system preference auto-detection (`prefers-color-scheme`)
