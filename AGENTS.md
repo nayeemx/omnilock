@@ -74,9 +74,9 @@ npx tsc --noEmit
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "..." "path\to\OmniLock_X.Y.Z_x64-setup.exe#OmniLock_X.Y.Z_x64-setup.exe"
 
 # Sign installer for auto-updater (PRIVATE KEY IN signing-keys/ FOLDER)
-$key = Get-Content -Raw "signing-keys\update-v0.0.8.key"
+$key = Get-Content -Raw "src-tauri\update.key"
 $env:TAURI_SIGNING_PRIVATE_KEY = $key
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
 cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
 # Then paste the printed signature into latest.json
 ```
