@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Security::Cryptography::*;
 
-const GITHUB_CLIENT_ID: &str = "Ov23liplaceholder";
+const GITHUB_CLIENT_ID: &str = "Ov23li9jwqq1jy88qziH";
 const GITHUB_DEVICE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_API: &str = "https://api.github.com";

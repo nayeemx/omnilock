@@ -4,6 +4,11 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.1.3] - 2026-07-27
+
+### Added
+- GitHub Cloud Sync with real OAuth App (Device Flow enabled)
+
 ## [0.1.2] - 2026-07-27
 
 ### Fixed
