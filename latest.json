@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T01:00:00Z",
+  "pub_date": "2026-07-28T02:00:00Z",
   "version": "v0.1.4",
-  "notes": "Fix: updater now relaunches app after install (no more manual restart). Error handling on update install.",
+  "notes": "Fixes: GitHub connect state, App Locker search, folder/file picker, lock loaders. New: backup/restore vault, installed apps scan.",
   "platforms": {
     "windows-x86_64": {
       "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.4/OmniLock_0.1.4_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1N3S1N2bXJuckdZN0lHcTFCUGxYSVRRVkQxZTRoQWtYbjNKamJhVmpzUGRiYUlxQlJuWVI4K2JQQ3VGTHh5eU5xY0VRci9aYi9IajZqSyt6OU9QUVFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTYxMDc5CWZpbGU6T21uaUxvY2tfMC4xLjRfeDY0LXNldHVwLmV4ZQpwdlFheUFJTitGWVY2amExMm5aQUFwNStwelQyZGVZVForREVCelZNeXVjQWc2UWFqWkpuVGYyNlRmQ1hYT0xxOXJ2cWkxKzBiM0NkaG9nb0s2ZTREQT09Cg=="
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1FGam1aM3F1MEVOanhuRkY5T0pQRU5VK2RTcDhKbkJNNnQwTmkxS2JjbVBsUnI5VW9WR1EzZkhZaTZjUm5WL1dVd0licTU2ZXdBY0MxRTh5SVJDZmdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTY2OTM4CWZpbGU6T21uaUxvY2tfMC4xLjRfeDY0LXNldHVwLmV4ZQpQZXJhYUlOWk84U2tGcm1rK3ZLN0dxVHR6cmJUYmladzRialE4TlNpK1VEc2J2WWFHUjlwRzMvakhoMEl4VE9pZzVoL1dhZ3B3S2tuT0VYOVZ1RWZCZz09Cg=="
     }
   }
 }

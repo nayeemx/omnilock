@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { open } from "@tauri-apps/plugin-dialog";
 
 export interface VaultStatusDto {
   initialized: boolean;
@@ -140,6 +141,10 @@ export async function listDrives(): Promise<string[]> {
 
 export async function listProcesses(): Promise<[string, string, string][]> {
   return invoke("cmd_list_processes");
+}
+
+export async function listInstalledApps(): Promise<[string, string, string][]> {
+  return invoke("cmd_list_installed_apps");
 }
 
 export async function setAutoLock(minutes: number): Promise<void> {
@@ -310,4 +315,27 @@ export async function githubSyncFromCloud(): Promise<void> {
 
 export async function openExternalUrl(url: string): Promise<void> {
   return invoke("cmd_open_external_url", { url });
+}
+
+export async function pickFolder(): Promise<string | null> {
+  const result = await open({ directory: true, title: "Select Folder to Lock" });
+  return result as string | null;
+}
+
+export async function pickFile(): Promise<string | null> {
+  const result = await open({ title: "Select File to Lock" });
+  return result as string | null;
+}
+
+export async function backupVault(destDir: string): Promise<string> {
+  return invoke("cmd_backup_vault", { destDir });
+}
+
+export async function restoreVault(srcDir: string): Promise<string> {
+  return invoke("cmd_restore_vault", { srcDir });
+}
+
+export async function pickDirectory(title: string): Promise<string | null> {
+  const result = await open({ directory: true, title });
+  return result as string | null;
 }

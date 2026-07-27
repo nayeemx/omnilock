@@ -35,7 +35,7 @@ fn vault_path() -> PathBuf {
     dir.join(VAULT_FILE)
 }
 
-fn vault_dir() -> PathBuf {
+pub fn vault_dir() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     let dir = PathBuf::from(appdata).join(VAULT_DIR);
     fs::create_dir_all(&dir).ok();

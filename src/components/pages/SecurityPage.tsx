@@ -1,13 +1,14 @@
 import { useState } from "react";
 import {
   QrCode, KeyRound, Copy, ArrowRight, CheckCircle2,
-  AlertTriangle, Power, Activity, ShieldAlert, Download,
+  AlertTriangle, Power, Activity, ShieldAlert, Download, Upload,
   Usb, Github, Cloud,
 } from "lucide-react";
 import {
   generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock,
   checkForUpdates, installUpdate, getRecoveryKey,
   listUsbDrives, enrollUsbKey, removeUsbKey, detectUsbKey,
+  backupVault, restoreVault, pickDirectory,
   type VaultConfigDto, type UsbDriveInfo,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -506,6 +507,46 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             <Download className="w-4 h-4" />
           </button>
         )}
+      </div>
+
+      <div className="glass rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Download className="w-5 h-5 text-[color:var(--primary)]" />
+          <h3 className="font-semibold">Backup & Restore</h3>
+        </div>
+        <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+          Export your encrypted vault to a safe location. If you reinstall OmniLock, import the backup to restore all your settings, locked apps, folders, and recovery keys.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={async () => {
+                    const dir = await pickDirectory("Choose Backup Location");
+                    if (dir) {
+                      try {
+                        const msg = await backupVault(dir);
+                        setSuccess(msg);
+                      } catch (e: any) {
+                        setError("Backup failed: " + e);
+                      }
+                    }
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-surface-border hover:bg-surface-active flex items-center justify-center gap-2">
+            <Download className="w-4 h-4" /> Export Backup
+          </button>
+          <button onClick={async () => {
+                    const dir = await pickDirectory("Select Backup Folder to Restore");
+                    if (dir) {
+                      try {
+                        const msg = await restoreVault(dir);
+                        setSuccess(msg);
+                      } catch (e: any) {
+                        setError("Restore failed: " + e);
+                      }
+                    }
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-surface-border hover:bg-surface-active flex items-center justify-center gap-2">
+            <Upload className="w-4 h-4" /> Import Backup
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,22 +1,21 @@
 import { useState, useEffect } from "react";
 import {
-  HardDrive, Folder, FileLock2, Lock, Unlock, Plus, X,
+  HardDrive, Folder, FileLock2, Lock, Unlock, Plus, X, Loader2, FolderOpen, FileSearch,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
   addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile, showWidget,
+  pickFolder, pickFile,
   type VaultConfigDto,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
-import { Field } from "../shared/Field";
 
 export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; refresh: () => Promise<void> }) {
   const [drives, setDrives] = useState<string[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [addPath, setAddPath] = useState("");
-  const [addType, setAddType] = useState<"file" | "folder">("folder");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [lockingDrive, setLockingDrive] = useState<string | null>(null);
+  const [lockingPath, setLockingPath] = useState<string | null>(null);
 
   useEffect(() => {
     listDrives().then(setDrives).catch(e => setError("Failed to list drives: " + e));
@@ -26,8 +25,11 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const lockedFolders = config?.locked_folders || [];
   const lockedFiles = config?.locked_files || [];
 
+  const clearMessages = () => { setError(""); setSuccess(""); };
+
   const handleToggleDrive = async (letter: string) => {
-    setError(""); setSuccess("");
+    clearMessages();
+    setLockingDrive(letter);
     try {
       if (lockedDrives.includes(letter)) {
         await removeLockedDrive(letter);
@@ -41,28 +43,41 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       setError("Failed: " + e);
       await refresh();
     }
+    setLockingDrive(null);
   };
 
-  const handleAddPath = async () => {
-    if (!addPath.trim()) return;
-    setError(""); setSuccess("");
+  const handlePickFolder = async () => {
+    clearMessages();
     try {
-      if (addType === "folder") {
-        await addLockedFolder(addPath);
-      } else {
-        await addLockedFile(addPath);
-      }
-      setSuccess(`Path locked: ${addPath}`);
-      setAddPath("");
-      setShowAdd(false);
+      const path = await pickFolder();
+      if (!path) return;
+      setLockingPath(path);
+      await addLockedFolder(path);
+      setSuccess(`Folder locked: ${path}`);
       await refresh();
     } catch (e: any) {
-      setError("Failed to lock path: " + e);
+      setError("Failed to lock folder: " + e);
     }
+    setLockingPath(null);
+  };
+
+  const handlePickFile = async () => {
+    clearMessages();
+    try {
+      const path = await pickFile();
+      if (!path) return;
+      setLockingPath(path);
+      await addLockedFile(path);
+      setSuccess(`File locked: ${path}`);
+      await refresh();
+    } catch (e: any) {
+      setError("Failed to lock file: " + e);
+    }
+    setLockingPath(null);
   };
 
   const handleRemovePath = async (path: string, type: "file" | "folder") => {
-    setError(""); setSuccess("");
+    clearMessages();
     try {
       if (type === "folder") {
         await removeLockedFolder(path);
@@ -111,8 +126,9 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                   }} />
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
-                  <button onClick={() => handleToggleDrive(letter)}
-                           className={`px-3 py-1.5 rounded-lg border transition text-xs ${isLocked ? "border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10" : "border-surface-border hover:bg-surface"}`}>
+                  <button onClick={() => handleToggleDrive(letter)} disabled={lockingDrive === letter}
+                          className={`px-3 py-1.5 rounded-lg border transition text-xs flex items-center gap-1.5 ${isLocked ? "border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10" : "border-surface-border hover:bg-surface"} disabled:opacity-40`}>
+                    {lockingDrive === letter ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                     {isLocked ? "Unlock" : "Lock"}
                   </button>
                   {isLocked && (
@@ -135,14 +151,16 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           <h3 className="font-semibold">Protected Paths</h3>
           <span className="text-xs text-[color:var(--muted-foreground)]">{lockedFolders.length + lockedFiles.length} entries</span>
           <div className="ml-auto flex gap-2">
-            <button onClick={() => { setAddType("folder"); setShowAdd(true); }}
-                    className="px-3 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2">
-              <Folder className="w-4 h-4" /> Add Folder
+            <button onClick={handlePickFolder} disabled={lockingPath !== null}
+                    className="px-3 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active disabled:opacity-40">
+              {lockingPath ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
+              {lockingPath ? "Locking..." : "Add Folder"}
             </button>
-            <button onClick={() => { setAddType("file"); setShowAdd(true); }}
-                    className="px-3 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan"
+            <button onClick={handlePickFile} disabled={lockingPath !== null}
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
                     style={{ background: "var(--gradient-brand)" }}>
-              <Plus className="w-4 h-4" /> Lock New Path
+              {lockingPath ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
+              {lockingPath ? "Locking..." : "Lock File"}
             </button>
           </div>
         </div>
@@ -185,37 +203,11 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           ))}
           {lockedFolders.length === 0 && lockedFiles.length === 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
-              No paths locked yet. Click "Lock New Path" to get started.
+              No paths locked yet. Click "Add Folder" or "Lock File" to get started.
             </div>
           )}
         </div>
       </div>
-
-      {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="glass rounded-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Lock {addType === "folder" ? "Folder" : "File"}</h3>
-              <button onClick={() => setShowAdd(false)} className="p-1.5 rounded-lg hover:bg-surface-hover"><X className="w-4 h-4" /></button>
-            </div>
-            <Field label="Path" icon={addType === "folder" ? Folder : FileLock2}>
-              <input value={addPath} onChange={e => setAddPath(e.target.value)}
-                     placeholder={addType === "folder" ? "D:\\Private\\Financials" : "C:\\Users\\file.txt"}
-                     className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
-            </Field>
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowAdd(false)} className="flex-1 px-4 py-2.5 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active">
-                Cancel
-              </button>
-              <button onClick={handleAddPath} disabled={!addPath.trim()}
-                      className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
-                      style={{ background: "var(--gradient-brand)" }}>
-                <Lock className="w-4 h-4" /> Lock
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

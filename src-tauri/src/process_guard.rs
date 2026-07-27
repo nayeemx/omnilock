@@ -36,6 +36,56 @@ pub fn enumerate_processes() -> Vec<(String, String, String)> {
     results
 }
 
+pub fn enumerate_installed_apps() -> Vec<(String, String, String)> {
+    let mut results = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let hives: Vec<(&str, &str)> = vec![
+        ("HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        ("HKLM", r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        ("HKCU", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    ];
+
+    for (hive, subkey) in hives {
+        let full_key = format!("{}\\{}", hive, subkey);
+        if let Ok(output) = std::process::Command::new("reg")
+            .args(["query", &full_key, "/s"])
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let mut current_name = String::new();
+            let mut current_path = String::new();
+
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("DisplayName") {
+                    if let Some(val) = trimmed.split_once("REG_SZ").map(|(_, v)| v.trim().to_string()) {
+                        current_name = val;
+                    }
+                } else if trimmed.starts_with("InstallLocation") {
+                    if let Some(val) = trimmed.split_once("REG_SZ").map(|(_, v)| v.trim().to_string()) {
+                        current_path = val;
+                    }
+                } else if trimmed.starts_with("DisplayVersion") || trimmed.is_empty() || trimmed.starts_with("HKEY_") {
+                    if !current_name.is_empty() && !seen.contains(&current_name) {
+                        seen.insert(current_name.clone());
+                        results.push((current_name.clone(), current_path.clone(), String::new()));
+                    }
+                    current_name = String::new();
+                    current_path = String::new();
+                }
+            }
+            if !current_name.is_empty() && !seen.contains(&current_name) {
+                seen.insert(current_name.clone());
+                results.push((current_name, current_path, String::new()));
+            }
+        }
+    }
+
+    results.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    results
+}
+
 pub fn compute_file_sha256(path: &str) -> Result<String, String> {
     let data = fs::read(path).map_err(|e| format!("Cannot read binary: {}", e))?;
     let mut hasher = Sha256::new();

@@ -4,10 +4,21 @@
 
 ## Current State
 
-- **Version**: 0.1.3 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.3)
+- **Version**: 0.1.4 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.4)
 - **Last Updated**: 2026-07-27
 - **Git**: clean, all changes committed on `main`
 - **Build**: compiles clean (0 Rust errors, 0 TS errors)
+
+---
+
+## What Was Just Done (v0.1.3 → v0.1.4)
+
+1. **GitHub connect state fix** — After Device Flow auth, `cloud_sync_enabled` is now set in vault config. UI correctly shows "Active" badge.
+2. **App Locker search fix** — Main page search now filters locked apps list (was filtering processes instead). Separate search state for locked apps vs scan modal.
+3. **Installed apps scan** — App Locker now enumerates installed apps from Windows registry (not just running processes). Tab UI: Running vs Installed.
+4. **Lock operation loaders** — Spinner animations on lock, toggle, remove operations so user sees progress.
+5. **File picker** — Add Folder and Lock File now use native OS file picker dialog (no manual path typing).
+6. **Backup/Restore** — Export vault to any folder, import from backup on reinstall. Exports vault.enc, vault.recovery, vault.meta, locked_items.json.
 
 ---
 

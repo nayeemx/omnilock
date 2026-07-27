@@ -463,6 +463,11 @@ fn cmd_list_processes() -> Vec<(String, String, String)> {
 }
 
 #[tauri::command]
+fn cmd_list_installed_apps() -> Vec<(String, String, String)> {
+    process_guard::enumerate_installed_apps()
+}
+
+#[tauri::command]
 fn cmd_set_auto_lock(
     state: State<'_, AppState>,
     minutes: u32,
@@ -718,12 +723,29 @@ async fn cmd_github_start_device_flow() -> Result<models::GitHubDeviceFlowDto, S
 
 #[tauri::command]
 async fn cmd_github_poll_token(
+    state: State<'_, AppState>,
     device_code: String,
     interval: u64,
     expires_in: u64,
 ) -> Result<models::GitHubSyncStatusDto, String> {
     let _token = github_sync::poll_for_token(&device_code, interval, expires_in).await?;
     let status = github_sync::get_sync_status();
+    if status.connected {
+        if let Ok(mut config_guard) = state.vault_config.lock() {
+            if let Some(config) = config_guard.as_mut() {
+                config.cloud_sync_enabled = true;
+            }
+        }
+        if let Ok(password_guard) = state.password.lock() {
+            if let Some(password) = password_guard.as_ref() {
+                if let Ok(config_guard) = state.vault_config.lock() {
+                    if let Some(config) = config_guard.as_ref() {
+                        let _ = vault::encrypt_vault(config, password);
+                    }
+                }
+            }
+        }
+    }
     Ok(models::GitHubSyncStatusDto {
         connected: status.connected,
         github_user: status.github_user,
@@ -746,9 +768,28 @@ fn cmd_github_get_status() -> models::GitHubSyncStatusDto {
 }
 
 #[tauri::command]
-async fn cmd_github_connect_token(token: String) -> Result<models::GitHubSyncStatusDto, String> {
+async fn cmd_github_connect_token(
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<models::GitHubSyncStatusDto, String> {
     let user = github_sync::verify_github_token(&token).await?;
     let status = github_sync::connect_with_token(token, user)?;
+    if status.connected {
+        if let Ok(mut config_guard) = state.vault_config.lock() {
+            if let Some(config) = config_guard.as_mut() {
+                config.cloud_sync_enabled = true;
+            }
+        }
+        if let Ok(password_guard) = state.password.lock() {
+            if let Some(password) = password_guard.as_ref() {
+                if let Ok(config_guard) = state.vault_config.lock() {
+                    if let Some(config) = config_guard.as_ref() {
+                        let _ = vault::encrypt_vault(config, password);
+                    }
+                }
+            }
+        }
+    }
     Ok(models::GitHubSyncStatusDto {
         connected: status.connected,
         github_user: status.github_user,
@@ -761,6 +802,79 @@ async fn cmd_github_connect_token(token: String) -> Result<models::GitHubSyncSta
 #[tauri::command]
 fn cmd_github_disconnect() -> Result<(), String> {
     github_sync::disconnect_github()
+}
+
+#[tauri::command]
+fn cmd_backup_vault(dest_dir: String) -> Result<String, String> {
+    let dir = vault::vault_dir();
+    let dest = std::path::PathBuf::from(&dest_dir);
+    std::fs::create_dir_all(&dest).map_err(|e| format!("Cannot create backup folder: {}", e))?;
+
+    let mut files_backed_up = Vec::new();
+    let files_to_backup = ["vault.enc", "vault.recovery"];
+
+    for fname in &files_to_backup {
+        let src = dir.join(fname);
+        if src.exists() {
+            let dst = dest.join(fname);
+            std::fs::copy(&src, &dst).map_err(|e| format!("Failed to copy {}: {}", fname, e))?;
+            files_backed_up.push(fname.to_string());
+        }
+    }
+
+    let meta_src = dir.join("vault.meta");
+    if meta_src.exists() {
+        let meta_dst = dest.join("vault.meta");
+        std::fs::copy(&meta_src, &meta_dst).map_err(|e| format!("Failed to copy vault.meta: {}", e))?;
+        files_backed_up.push("vault.meta".to_string());
+    }
+
+    let items_src = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+        + "\\InnologyBD\\OmniLock\\locked_items.json";
+    let items_path = std::path::PathBuf::from(&items_src);
+    if items_path.exists() {
+        let items_dst = dest.join("locked_items.json");
+        std::fs::copy(&items_path, &items_dst).map_err(|e| format!("Failed to copy locked_items.json: {}", e))?;
+        files_backed_up.push("locked_items.json".to_string());
+    }
+
+    Ok(format!("Backed up {} files to: {}", files_backed_up.len(), dest_dir))
+}
+
+#[tauri::command]
+fn cmd_restore_vault(src_dir: String) -> Result<String, String> {
+    let src = std::path::PathBuf::from(&src_dir);
+    if !src.exists() {
+        return Err("Source folder does not exist".to_string());
+    }
+
+    let vault_dir = vault::vault_dir();
+    let mut files_restored = Vec::new();
+    let files_to_restore = ["vault.enc", "vault.recovery", "vault.meta"];
+
+    for fname in &files_to_restore {
+        let src_file = src.join(fname);
+        if src_file.exists() {
+            let dst = vault_dir.join(fname);
+            std::fs::copy(&src_file, &dst).map_err(|e| format!("Failed to copy {}: {}", fname, e))?;
+            files_restored.push(fname.to_string());
+        }
+    }
+
+    let items_dst = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+        + "\\InnologyBD\\OmniLock\\locked_items.json";
+    let items_src = src.join("locked_items.json");
+    if items_src.exists() {
+        std::fs::create_dir_all(std::path::PathBuf::from(&items_dst).parent().unwrap()).ok();
+        std::fs::copy(&items_src, &items_dst).map_err(|e| format!("Failed to copy locked_items.json: {}", e))?;
+        files_restored.push("locked_items.json".to_string());
+    }
+
+    if files_restored.is_empty() {
+        return Err("No backup files found in the selected folder".to_string());
+    }
+
+    Ok(format!("Restored {} files. Please restart OmniLock to apply.", files_restored.len()))
 }
 
 #[tauri::command]
@@ -830,6 +944,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             cmd_get_vault_status,
@@ -854,6 +969,7 @@ pub fn run() {
             cmd_disable_2fa,
             cmd_list_drives,
             cmd_list_processes,
+            cmd_list_installed_apps,
             cmd_set_auto_lock,
             cmd_get_security_question,
             cmd_get_recovery_key,
@@ -879,6 +995,8 @@ pub fn run() {
             cmd_github_sync_to_cloud,
             cmd_github_sync_from_cloud,
             cmd_open_external_url,
+            cmd_backup_vault,
+            cmd_restore_vault,
         ])
         .setup(|app| {
             #[cfg(desktop)]
