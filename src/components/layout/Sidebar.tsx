@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Shield, Activity } from "lucide-react";
+import { Activity } from "lucide-react";
 import { type VaultConfigDto, getWatchdogStatus, type WatchdogStatusDto } from "../../lib/tauri-bridge";
 import { tabs, type TabId } from "../types";
 
@@ -26,9 +26,8 @@ export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId
   return (
     <aside className="w-72 shrink-0 p-5 border-r border-[color:var(--border)] glass-subtle flex flex-col gap-2">
       <div className="flex items-center gap-3 px-2 pt-1 pb-6">
-        <div className="relative w-11 h-11 rounded-xl grid place-items-center" style={{ background: "var(--gradient-brand)" }}>
-          <Shield className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
-          <div className="absolute inset-0 rounded-xl glow-cyan opacity-60" />
+        <div className="relative w-11 h-11 rounded-xl overflow-hidden glow-cyan">
+          <img src="/icon.png" alt="OmniLock" className="w-full h-full object-cover" />
         </div>
         <div>
           <div className="text-lg font-semibold tracking-tight">OmniLock</div>

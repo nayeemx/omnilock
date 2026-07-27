@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Shield, ShieldCheck, Fingerprint, Activity,
+  ShieldCheck, Fingerprint, Activity,
   Lock, Eye, EyeOff, ArrowRight, CheckCircle2, HelpCircle, KeyRound,
   Usb, FileKey, Github, Cloud,
 } from "lucide-react";
@@ -353,9 +353,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
         <div className="absolute inset-0 opacity-60"
              style={{ background: "radial-gradient(ellipse at 30% 20%, oklch(0.35 0.18 210 / 0.5), transparent 60%), radial-gradient(ellipse at 70% 80%, oklch(0.35 0.22 295 / 0.45), transparent 60%)" }} />
         <div className="relative flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl grid place-items-center glow-cyan" style={{ background: "var(--gradient-brand)" }}>
-            <Shield className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
-          </div>
+          <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
           <div>
             <div className="text-lg font-semibold">OmniLock</div>
             <div className="text-[11px] uppercase tracking-widest text-[color:var(--muted-foreground)]">by InnologyBD</div>
@@ -393,9 +391,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
       <div className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl grid place-items-center" style={{ background: "var(--gradient-brand)" }}>
-              <Shield className="w-5 h-5 text-primary-foreground" strokeWidth={2.5} />
-            </div>
+            <img src="/icon.png" alt="OmniLock" className="w-10 h-10 rounded-xl object-cover" />
             <div className="text-lg font-semibold">OmniLock</div>
           </div>
 

@@ -50,9 +50,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
       <div className="w-full max-w-lg">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-11 h-11 rounded-xl grid place-items-center glow-cyan" style={{ background: "var(--gradient-brand)" }}>
-            <Shield className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
-          </div>
+          <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
           <div>
             <div className="text-lg font-semibold tracking-tight">OmniLock</div>
             <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>

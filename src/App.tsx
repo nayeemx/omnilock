@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Github, ArrowRight, Loader2 } from "lucide-react";
+import { Github, ArrowRight, Loader2 } from "lucide-react";
 import {
   getVaultStatus, getVaultConfig, lockNow,
   githubGetStatus, githubStartDeviceFlow, githubPollToken, openExternalUrl,
@@ -104,9 +104,7 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-screen" style={{ background: "var(--background)" }}>
         <div className="text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-xl grid place-items-center glow-cyan" style={{ background: "var(--gradient-brand)" }}>
-            <Shield className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
-          </div>
+          <img src="/icon.png" alt="OmniLock" className="w-12 h-12 mx-auto mb-4 rounded-xl object-cover glow-cyan" />
           <div className="text-sm text-[color:var(--muted-foreground)] animate-pulse">Loading OmniLock...</div>
         </div>
       </div>
@@ -121,9 +119,7 @@ export default function App() {
         <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
           <div className="w-full max-w-md">
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-11 h-11 rounded-xl grid place-items-center glow-cyan" style={{ background: "var(--gradient-brand)" }}>
-                <Shield className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
-              </div>
+              <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
               <div>
                 <div className="text-lg font-semibold tracking-tight">OmniLock</div>
                 <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
