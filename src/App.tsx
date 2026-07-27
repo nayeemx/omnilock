@@ -14,6 +14,8 @@ import { AppLockerPage } from "./components/pages/AppLockerPage";
 import { PresetsPage } from "./components/pages/PresetsPage";
 import { VaultPage } from "./components/pages/VaultPage";
 import { SecurityPage } from "./components/pages/SecurityPage";
+import { SystemMonitorPage } from "./components/pages/SystemMonitorPage";
+import { DashboardPage } from "./components/pages/DashboardPage";
 import { UnlockWidget } from "./components/widget/UnlockWidget";
 import { type TabId } from "./components/types";
 
@@ -26,7 +28,7 @@ export default function App() {
   const [vaultStatus, setVaultStatus] = useState<VaultStatusDto | null>(null);
   const [vaultConfig, setVaultConfig] = useState<VaultConfigDto | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>("apps");
+  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [githubStatus, setGithubStatus] = useState<GitHubSyncStatusDto | null>(null);
   const [githubStep, setGithubStep] = useState<"idle" | "code" | "polling">("idle");
   const [githubUserCode, setGithubUserCode] = useState("");
@@ -206,6 +208,8 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar onLockNow={handleLockNow} totpEnabled={vaultConfig?.totp_enabled} />
         <main className="flex-1 p-8 overflow-auto">
+          {activeTab === "dashboard" && <DashboardPage config={vaultConfig} refresh={refreshConfig} />}
+          {activeTab === "monitor" && <SystemMonitorPage />}
           {activeTab === "apps" && <AppLockerPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "presets" && <PresetsPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "vault" && <VaultPage config={vaultConfig} refresh={refreshConfig} />}

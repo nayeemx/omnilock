@@ -44,16 +44,25 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
   const handleScan = async () => {
     clearMessages();
     setScanning(true);
+    setShowAdd(true);
+    setSearch("");
     try {
       const [procs, installed] = await Promise.all([listProcesses(), listInstalledApps()]);
       setProcesses(procs);
       setInstalledApps(installed);
-      setShowAdd(true);
       if (procs.length === 0 && installed.length === 0) setError("No processes or installed apps found.");
     } catch (e: any) {
       setError("Failed to scan: " + e);
     }
     setScanning(false);
+  };
+
+  const handleOpenModal = () => {
+    setSearch("");
+    setShowAdd(true);
+    if (processes.length === 0 && installedApps.length === 0) {
+      handleScan();
+    }
   };
 
   const handleAdd = async (name: string, path: string, sha256: string) => {
@@ -125,7 +134,7 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
                   className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active">
             <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} /> Scan
           </button>
-          <button onClick={() => { setProcesses([]); setInstalledApps([]); setShowAdd(true); handleScan(); }}
+          <button onClick={handleOpenModal}
                   className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 text-[color:var(--primary-foreground)] glow-cyan"
                   style={{ background: "var(--gradient-brand)" }}>
             <Plus className="w-4 h-4" /> Add Application

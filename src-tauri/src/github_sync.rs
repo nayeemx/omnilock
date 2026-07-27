@@ -280,6 +280,23 @@ pub async fn poll_for_token(
             save_github_token(&token)?;
             let user = fetch_github_user(&token).await?;
             save_github_user(&user)?;
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let device_id = ensure_device_id();
+            let gist_id = load_sync_meta().map(|m| m.gist_id).unwrap_or_default();
+            let meta = SyncMeta {
+                github_user: user.login.clone(),
+                github_user_id: user.id,
+                avatar_url: user.avatar_url.clone().unwrap_or_default(),
+                gist_id,
+                last_sync: now,
+                device_id,
+            };
+            let _ = save_sync_meta(&meta);
+
             return Ok(token);
         }
 

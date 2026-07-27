@@ -1,12 +1,15 @@
 import {
   LayoutGrid, SlidersHorizontal, FolderLock, KeyRound,
   Monitor, Settings2, Database, Terminal, RefreshCw,
+  LayoutDashboard, Activity,
 } from "lucide-react";
 
-export type TabId = "apps" | "presets" | "vault" | "security";
+export type TabId = "dashboard" | "monitor" | "apps" | "presets" | "vault" | "security";
 export type SetupStep = 1 | 2;
 
 export const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "monitor", label: "System Monitor", icon: Activity },
   { id: "apps", label: "Application Locker", icon: LayoutGrid },
   { id: "presets", label: "System Presets", icon: SlidersHorizontal },
   { id: "vault", label: "File & Drive Vault", icon: FolderLock },

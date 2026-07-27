@@ -4,10 +4,27 @@
 
 ## Current State
 
-- **Version**: 0.1.4 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.4)
-- **Last Updated**: 2026-07-27
+- **Version**: 0.1.6 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.6)
+- **Last Updated**: 2026-07-28
 - **Git**: clean, all changes committed on `main`
 - **Build**: compiles clean (0 Rust errors, 0 TS errors)
+
+---
+
+## What Was Just Done (v0.1.5 → v0.1.6)
+
+1. **Widget close button** — Added X close button and Cancel button to UnlockWidget. Escape key closes widget. Auto-closes after successful unlock.
+2. **GitHub Connect fix** — `poll_for_token` now saves `sync.meta.json` after getting token, so `get_sync_status()` returns `connected: true`. UI correctly shows "Active" badge after Device Flow auth.
+3. **App Locker scan fix** — "Add Application" button no longer redundantly clears and re-scans. Search field cleared on modal open.
+4. **Vault search** — Added search input to Protected Paths section in File & Drive Vault page. Filters both locked folders and files.
+
+---
+
+## What Was Just Done (v0.1.4 → v0.1.5)
+
+1. **System Monitor page** — Real-time CPU, RAM, GPU, Network stats with live SVG graphs. CPU usage ring gauge, RAM usage ring gauge, GPU info via PowerShell WMI, network upload/download rates. Auto-refreshes every 2 seconds.
+2. **Dashboard page** — New sidebar page showing weather widget (via wttr.in API), protected items count, security status (2FA/cloud sync), quick CPU/RAM status, locked drives list. Default landing page.
+3. **New sidebar navigation** — Dashboard and System Monitor added as first two sidebar items.
 
 ---
 
@@ -42,7 +59,7 @@
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| Tauri app builds | ✅ | `OmniLock_0.1.2_x64-setup.exe` produced |
+| Tauri app builds | ✅ | `OmniLock_0.1.6_x64-setup.exe` produced |
 | Rust compiles | ✅ | 0 errors |
 | TypeScript compiles | ✅ | 0 errors |
 | Pipe IPC (Lock/Unlock/Status) | ✅ | 7/7 pipe tests passed (session 2026-07-27) |
@@ -90,7 +107,7 @@ npx tsc --noEmit
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "..." "path\to\OmniLock_X.Y.Z_x64-setup.exe#OmniLock_X.Y.Z_x64-setup.exe"
 
 # Sign installer for auto-updater (PRIVATE KEY IN signing-keys/ FOLDER)
-$key = Get-Content -Raw "src-tauri\update.key"
+$key = (Get-Content -Raw "src-tauri\update.key").Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY = $key
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
 cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
@@ -119,7 +136,7 @@ cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
 
 ### To sign a new release:
 ```powershell
-$key = Get-Content -Raw "src-tauri\update.key"
+$key = (Get-Content -Raw "src-tauri\update.key").Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY = $key
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
 cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
@@ -136,7 +153,7 @@ omnilock/
 │   ├── components/
 │   │   ├── auth/         # LoginScreen, SetupWizard, GitHubConnect
 │   │   ├── layout/       # Sidebar, TopBar, Footer
-│   │   ├── pages/        # AppLocker, Presets, Vault, Security
+│   │   ├── pages/        # Dashboard, SystemMonitor, AppLocker, Presets, Vault, Security
 │   │   ├── shared/       # Field, Toggle, StatusPill, Stat
 │   │   └── widget/       # UnlockWidget (separate Tauri window)
 │   └── lib/tauri-bridge.ts  # Tauri invoke wrappers
@@ -148,7 +165,8 @@ omnilock/
 │       ├── github_sync.rs     # GitHub Device Flow + Gist sync
 │       ├── file_locker.rs     # Path validation (ACL delegated to service)
 │       ├── drive_locker.rs    # NoDrives registry + ACL delegated
-│       └── process_guard.rs   # Process monitor + suspension
+│       ├── process_guard.rs   # Process monitor + suspension
+│       └── system_monitor.rs  # CPU/RAM/GPU/Network stats + weather
 ├── service/              # Windows service (ACL enforcement daemon)
 │   └── src/
 │       ├── bin/svc.rs    # Main service (named pipe server)
@@ -166,6 +184,9 @@ omnilock/
 
 ## Version History
 
+- **0.1.6** — Widget close button, GitHub Connect state fix, App Locker search fix, Vault search
+- **0.1.5** — System Monitor (CPU/RAM/GPU/Network graphs) + Dashboard (weather widget, security overview)
+- **0.1.4** — GitHub connect state fix, App Locker search, installed apps scan, lock loaders, file picker, backup/restore
 - **0.1.3** — GitHub Cloud Sync (real OAuth App with Device Flow)
 - **0.1.2** — Icon consistency (same icon.png in taskbar + dashboard)
 - **0.1.1** — Light theme + system preference detection

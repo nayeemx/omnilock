@@ -15,6 +15,7 @@ pub mod auto_lock;
 pub mod usb_key;
 pub mod service_client;
 pub mod github_sync;
+pub mod system_monitor;
 
 use tauri::State;
 use tauri::Manager;
@@ -934,6 +935,16 @@ fn cmd_open_external_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| format!("Failed to open URL: {}", e))
 }
 
+#[tauri::command]
+fn cmd_get_system_stats() -> system_monitor::SystemStats {
+    system_monitor::get_system_stats()
+}
+
+#[tauri::command]
+async fn cmd_get_weather() -> Result<system_monitor::WeatherData, String> {
+    system_monitor::get_weather().await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState {
@@ -997,6 +1008,8 @@ pub fn run() {
             cmd_open_external_url,
             cmd_backup_vault,
             cmd_restore_vault,
+            cmd_get_system_stats,
+            cmd_get_weather,
         ])
         .setup(|app| {
             #[cfg(desktop)]

@@ -339,3 +339,39 @@ export async function pickDirectory(title: string): Promise<string | null> {
   const result = await open({ directory: true, title });
   return result as string | null;
 }
+
+export interface SystemStats {
+  cpu_usage: number;
+  cpu_cores: number;
+  cpu_name: string;
+  ram_total_mb: number;
+  ram_used_mb: number;
+  ram_usage_pct: number;
+  gpu_name: string;
+  gpu_vram_mb: number;
+  gpu_usage_pct: number;
+  net_sent_mb: number;
+  net_recv_mb: number;
+  net_sent_rate: number;
+  net_recv_rate: number;
+  uptime_secs: number;
+}
+
+export interface WeatherData {
+  temp_c: number;
+  temp_f: number;
+  description: string;
+  humidity: number;
+  wind_kph: number;
+  feels_like_c: number;
+  location: string;
+  icon: string;
+}
+
+export async function getSystemStats(): Promise<SystemStats> {
+  return invoke("cmd_get_system_stats");
+}
+
+export async function getWeather(): Promise<WeatherData> {
+  return invoke("cmd_get_weather");
+}

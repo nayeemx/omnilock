@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  HardDrive, Folder, FileLock2, Lock, Unlock, Plus, X, Loader2, FolderOpen, FileSearch,
+  HardDrive, Folder, FileLock2, Lock, Unlock, Plus, X, Loader2, FolderOpen, FileSearch, Search,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
@@ -16,6 +16,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const [success, setSuccess] = useState("");
   const [lockingDrive, setLockingDrive] = useState<string | null>(null);
   const [lockingPath, setLockingPath] = useState<string | null>(null);
+  const [pathSearch, setPathSearch] = useState("");
 
   useEffect(() => {
     listDrives().then(setDrives).catch(e => setError("Failed to list drives: " + e));
@@ -24,6 +25,8 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const lockedDrives = config?.locked_drives || [];
   const lockedFolders = config?.locked_folders || [];
   const lockedFiles = config?.locked_files || [];
+  const filteredFolders = lockedFolders.filter(f => f.toLowerCase().includes(pathSearch.toLowerCase()));
+  const filteredFiles = lockedFiles.filter(f => f.toLowerCase().includes(pathSearch.toLowerCase()));
 
   const clearMessages = () => { setError(""); setSuccess(""); };
 
@@ -150,7 +153,14 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           <FileLock2 className="w-5 h-5 text-[color:var(--primary)]" />
           <h3 className="font-semibold">Protected Paths</h3>
           <span className="text-xs text-[color:var(--muted-foreground)]">{lockedFolders.length + lockedFiles.length} entries</span>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex items-center gap-2">
+            {(lockedFolders.length + lockedFiles.length) > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border">
+                <Search className="w-3.5 h-3.5 text-[color:var(--muted-foreground)]" />
+                <input placeholder="Search paths..." value={pathSearch} onChange={e => setPathSearch(e.target.value)}
+                       className="bg-transparent outline-none text-xs w-32 placeholder:text-[color:var(--muted-foreground)]" />
+              </div>
+            )}
             <button onClick={handlePickFolder} disabled={lockingPath !== null}
                     className="px-3 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active disabled:opacity-40">
               {lockingPath ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
@@ -165,7 +175,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           </div>
         </div>
         <div className="divide-y divide-surface-border">
-          {lockedFolders.map(f => (
+          {filteredFolders.map(f => (
             <div key={f} className="px-5 py-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">
                 <Folder className="w-4 h-4 text-[color:var(--primary)]" />
@@ -183,7 +193,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </button>
             </div>
           ))}
-          {lockedFiles.map(f => (
+          {filteredFiles.map(f => (
             <div key={f} className="px-5 py-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">
                 <FileLock2 className="w-4 h-4 text-[color:var(--violet)]" />
@@ -204,6 +214,11 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           {lockedFolders.length === 0 && lockedFiles.length === 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
               No paths locked yet. Click "Add Folder" or "Lock File" to get started.
+            </div>
+          )}
+          {pathSearch && filteredFolders.length === 0 && filteredFiles.length === 0 && lockedFolders.length + lockedFiles.length > 0 && (
+            <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
+              No paths match "{pathSearch}".
             </div>
           )}
         </div>
