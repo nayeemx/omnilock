@@ -171,7 +171,7 @@ export function GitHubConnect({ onStatusChange }: { onStatusChange?: (connected:
           <button
             onClick={handleSyncFromCloud}
             disabled={syncing}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-white/[0.05] border border-white/10 hover:bg-white/[0.08] transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-surface border border-surface-border hover:bg-surface-active transition-colors disabled:opacity-50"
           >
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Restore from Cloud
@@ -191,7 +191,7 @@ export function GitHubConnect({ onStatusChange }: { onStatusChange?: (connected:
   return (
     <div className="space-y-4">
       <div className="text-center py-4">
-        <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-white/[0.06] border border-white/10 grid place-items-center">
+        <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-surface border border-surface-border grid place-items-center">
           <Github className="w-6 h-6 text-white/70" />
         </div>
         <h3 className="text-sm font-medium mb-1">Connect GitHub for Cloud Sync</h3>
@@ -208,7 +208,7 @@ export function GitHubConnect({ onStatusChange }: { onStatusChange?: (connected:
 
       {step === "polling" && deviceFlow ? (
         <div className="space-y-3">
-          <div className="p-3 rounded-lg bg-white/[0.04] border border-white/10 text-center">
+          <div className="p-3 rounded-lg bg-surface border border-surface-border text-center">
             <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)] mb-2">
               Enter this code on GitHub
             </div>
@@ -218,7 +218,7 @@ export function GitHubConnect({ onStatusChange }: { onStatusChange?: (connected:
               </span>
               <button
                 onClick={copyUserCode}
-                className="p-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1] transition-colors"
+                className="p-1.5 rounded-md bg-surface hover:bg-surface-hover transition-colors"
               >
                 {copied ? <Check className="w-4 h-4 text-[color:var(--success)]" /> : <Copy className="w-4 h-4" />}
               </button>

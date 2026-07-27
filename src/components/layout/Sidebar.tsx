@@ -44,8 +44,8 @@ export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId
             <button key={id} onClick={() => setTab(id)}
                     className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
                       active
-                        ? "bg-white/[0.06] text-[color:var(--foreground)] border border-white/10"
-                        : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:bg-white/[0.03] border border-transparent"
+                        ? "bg-surface text-[color:var(--foreground)] border border-surface-border"
+                        : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:bg-surface border border-transparent"
                     }`}>
               <Icon className={`w-4 h-4 ${active ? "text-[color:var(--primary)]" : ""}`} />
               <span className="flex-1 text-left">{label}</span>

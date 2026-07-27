@@ -311,7 +311,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
     return (
       <div className="space-y-3">
         <button onClick={handleResetQuestion} disabled={resetLoading}
-                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition text-left">
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-surface-border bg-surface hover:bg-surface-hover transition text-left">
           <div className="w-10 h-10 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in oklab, var(--cyan) 15%, transparent)", color: "var(--cyan)" }}>
             <HelpCircle className="w-5 h-5" />
           </div>
@@ -322,7 +322,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
           <ArrowRight className="w-4 h-4 text-[color:var(--muted-foreground)] ml-auto" />
         </button>
         <button onClick={() => { setResetError(""); setResetMode("recovery_key"); }} disabled={resetLoading}
-                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition text-left">
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-surface-border bg-surface hover:bg-surface-hover transition text-left">
           <div className="w-10 h-10 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in oklab, var(--violet) 15%, transparent)", color: "var(--violet)" }}>
             <FileKey className="w-5 h-5" />
           </div>
@@ -333,7 +333,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
           <ArrowRight className="w-4 h-4 text-[color:var(--muted-foreground)] ml-auto" />
         </button>
         <button onClick={() => { setResetError(""); setResetMode("usb_key"); }} disabled={resetLoading}
-                className="w-full flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition text-left">
+                className="w-full flex items-center gap-4 p-4 rounded-xl border border-surface-border bg-surface hover:bg-surface-hover transition text-left">
           <div className="w-10 h-10 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in oklab, var(--success) 15%, transparent)", color: "var(--success)" }}>
             <Usb className="w-5 h-5" />
           </div>
@@ -447,7 +447,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
 
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
+                  <div className="w-full border-t border-surface-border"></div>
                 </div>
                 <div className="relative flex justify-center text-[11px]">
                   <span className="px-3 text-[color:var(--muted-foreground)]" style={{ background: "var(--background)" }}>or</span>
@@ -464,7 +464,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
                       <span className="text-2xl font-mono font-bold tracking-wider text-[color:var(--primary)]">
                         {githubUserCode}
                       </span>
-                      <button onClick={copyGithubCode} className="p-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1]">
+                      <button onClick={copyGithubCode} className="p-1.5 rounded-md bg-surface hover:bg-surface-hover">
                         {githubCopied ? <CheckCircle2 className="w-4 h-4 text-[color:var(--success)]" /> : <Cloud className="w-4 h-4" />}
                       </button>
                     </div>
@@ -479,7 +479,7 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
                 </div>
               ) : (
                 <button onClick={handleGitHubLogin} disabled={githubLoading}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors disabled:opacity-40">
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-surface-border bg-surface hover:bg-surface-hover transition-colors disabled:opacity-40">
                   <Github className="w-4 h-4" />
                   {githubLoading ? "Connecting..." : "Connect with GitHub"}
                 </button>

@@ -104,7 +104,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                   <div className="text-2xl font-semibold tracking-tight">{letter}:\</div>
                   <div className="text-xs text-[color:var(--muted-foreground)]">{isLocked ? "Locked" : "Unlocked"}</div>
                 </div>
-                <div className="mt-4 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="mt-4 h-1.5 rounded-full bg-surface overflow-hidden">
                   <div className="h-full rounded-full" style={{
                     width: isLocked ? "100%" : "0%",
                     background: isLocked ? "var(--gradient-brand)" : "oklch(1 0 0 / 0.2)",
@@ -112,7 +112,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
                   <button onClick={() => handleToggleDrive(letter)}
-                          className={`px-3 py-1.5 rounded-lg border transition text-xs ${isLocked ? "border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10" : "border-white/10 hover:bg-white/[0.04]"}`}>
+                           className={`px-3 py-1.5 rounded-lg border transition text-xs ${isLocked ? "border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10" : "border-surface-border hover:bg-surface"}`}>
                     {isLocked ? "Unlock" : "Lock"}
                   </button>
                   {isLocked && (
@@ -136,7 +136,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           <span className="text-xs text-[color:var(--muted-foreground)]">{lockedFolders.length + lockedFiles.length} entries</span>
           <div className="ml-auto flex gap-2">
             <button onClick={() => { setAddType("folder"); setShowAdd(true); }}
-                    className="px-3 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/10 flex items-center gap-2">
+                    className="px-3 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2">
               <Folder className="w-4 h-4" /> Add Folder
             </button>
             <button onClick={() => { setAddType("file"); setShowAdd(true); }}
@@ -146,17 +146,17 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
             </button>
           </div>
         </div>
-        <div className="divide-y divide-white/[0.06]">
+        <div className="divide-y divide-surface-border">
           {lockedFolders.map(f => (
             <div key={f} className="px-5 py-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg grid place-items-center bg-white/[0.04] border border-white/10">
+              <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">
                 <Folder className="w-4 h-4 text-[color:var(--primary)]" />
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-sm">{f}</code>
                 <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">Folder · <span className="text-[color:var(--warning)]">DENIED · EVERYONE</span></div>
               </div>
-              <button onClick={() => handleRemovePath(f, "folder")} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
+              <button onClick={() => handleRemovePath(f, "folder")} className="p-1.5 rounded-lg hover:bg-surface-hover text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
                 <X className="w-4 h-4" />
               </button>
               <button onClick={() => showWidget("folder", f, f.split("\\").pop() || f)}
@@ -167,14 +167,14 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           ))}
           {lockedFiles.map(f => (
             <div key={f} className="px-5 py-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg grid place-items-center bg-white/[0.04] border border-white/10">
+              <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">
                 <FileLock2 className="w-4 h-4 text-[color:var(--violet)]" />
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-sm">{f}</code>
                 <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">File · <span className="text-[color:var(--warning)]">DENIED · SYSTEM</span></div>
               </div>
-              <button onClick={() => handleRemovePath(f, "file")} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
+              <button onClick={() => handleRemovePath(f, "file")} className="p-1.5 rounded-lg hover:bg-surface-hover text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
                 <X className="w-4 h-4" />
               </button>
               <button onClick={() => showWidget("file", f, f.split("\\").pop() || f)}
@@ -196,7 +196,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           <div className="glass rounded-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold">Lock {addType === "folder" ? "Folder" : "File"}</h3>
-              <button onClick={() => setShowAdd(false)} className="p-1.5 rounded-lg hover:bg-white/[0.06]"><X className="w-4 h-4" /></button>
+              <button onClick={() => setShowAdd(false)} className="p-1.5 rounded-lg hover:bg-surface-hover"><X className="w-4 h-4" /></button>
             </div>
             <Field label="Path" icon={addType === "folder" ? Folder : FileLock2}>
               <input value={addPath} onChange={e => setAddPath(e.target.value)}
@@ -204,7 +204,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                      className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
             </Field>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowAdd(false)} className="flex-1 px-4 py-2.5 rounded-lg text-sm bg-white/[0.04] border border-white/10 hover:bg-white/[0.08]">
+              <button onClick={() => setShowAdd(false)} className="flex-1 px-4 py-2.5 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active">
                 Cancel
               </button>
               <button onClick={handleAddPath} disabled={!addPath.trim()}

@@ -221,6 +221,14 @@ pub async fn start_device_flow() -> Result<DeviceCodeResponse, String> {
         .await
         .map_err(|e| format!("Failed to start device flow: {}", e))?;
 
+    if !resp.status().is_success() {
+        let error_body = resp.text().await.unwrap_or_default();
+        return Err(format!(
+            "GitHub rejected the client ID (HTTP {}). This usually means the OAuth App is not registered or Device Flow is not enabled. Visit https://github.com/settings/developers to create an OAuth App with Device Flow enabled.",
+            error_body
+        ));
+    }
+
     let body: DeviceCodeResponse = resp
         .json()
         .await

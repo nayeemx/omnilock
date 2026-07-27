@@ -91,14 +91,14 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
 
       <div className="glass rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
-          <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10">
+          <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-surface border border-surface-border">
             <Search className="w-4 h-4 text-[color:var(--muted-foreground)]" />
             <input placeholder="Search locked apps..."
                    value={search} onChange={e => setSearch(e.target.value)}
                    className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
           </div>
           <button onClick={handleScan} disabled={scanning}
-                  className="px-4 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/10 flex items-center gap-2 hover:bg-white/[0.08]">
+                  className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active">
             <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} /> Scan
           </button>
           <button onClick={() => { setProcesses([]); setShowAdd(true); handleScan(); }}
@@ -108,15 +108,15 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
           </button>
         </div>
 
-        <div className="divide-y divide-white/[0.06]">
+        <div className="divide-y divide-surface-border">
           {lockedApps.length === 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
               No apps locked yet. Click "Scan" to find running processes and add them.
             </div>
           )}
           {lockedApps.map(app => (
-            <div key={app.name} className="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.02] transition">
-              <div className="w-11 h-11 rounded-xl bg-white/[0.04] border border-white/10 grid place-items-center text-xl">
+            <div key={app.name} className="px-5 py-4 flex items-center gap-4 hover:bg-surface transition">
+              <div className="w-11 h-11 rounded-xl bg-surface border border-surface-border grid place-items-center text-xl">
                 {app.name.includes("chrome") ? "🌐" : app.name.includes("telegram") ? "💬" : app.name.includes("code") ? "💻" : app.name.includes("discord") ? "🎧" : "⚙️"}
               </div>
               <div className="flex-1 min-w-0">
@@ -131,7 +131,7 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
               </div>
               <StatusPill locked={app.enabled} />
               <Toggle on={app.enabled} onChange={(v) => handleToggle(app.name, v)} />
-              <button onClick={() => handleRemove(app.name)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
+              <button onClick={() => handleRemove(app.name)} className="p-1.5 rounded-lg hover:bg-surface-hover text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
                 <X className="w-4 h-4" />
               </button>
               <button onClick={() => showWidget("app", app.path, app.name)}
@@ -148,18 +148,18 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
           <div className="glass rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="p-5 border-b border-[color:var(--border)] flex items-center justify-between">
               <h3 className="font-semibold">Add Application to Lock</h3>
-              <button onClick={() => setShowAdd(false)} className="p-1.5 rounded-lg hover:bg-white/[0.06]"><X className="w-4 h-4" /></button>
+              <button onClick={() => setShowAdd(false)} className="p-1.5 rounded-lg hover:bg-surface-hover"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface border border-surface-border">
                 <Search className="w-4 h-4 text-[color:var(--muted-foreground)]" />
                 <input placeholder="Filter processes..." value={search} onChange={e => setSearch(e.target.value)}
                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
               </div>
             </div>
-            <div className="flex-1 overflow-auto divide-y divide-white/[0.06]">
+            <div className="flex-1 overflow-auto divide-y divide-surface-border">
               {filtered.map(([name, path, sha]) => (
-                <div key={name + path} className="px-5 py-3 flex items-center gap-4 hover:bg-white/[0.02]">
+                <div key={name + path} className="px-5 py-3 flex items-center gap-4 hover:bg-surface">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{name}</div>
                     <div className="text-xs text-[color:var(--muted-foreground)] truncate">{path}</div>

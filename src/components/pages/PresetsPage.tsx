@@ -51,7 +51,7 @@ export function PresetsPage({ config, refresh }: { config: VaultConfigDto | null
           return (
             <div key={id} className="glass rounded-xl p-5 flex items-center gap-4">
               <div className={`w-12 h-12 rounded-xl grid place-items-center ${enabled ? "text-[color:var(--primary)]" : "text-[color:var(--muted-foreground)]"}`}
-                   style={{ background: enabled ? "color-mix(in oklab, var(--cyan) 12%, transparent)" : "oklch(1 0 0 / 0.03)" }}>
+                   style={{ background: enabled ? "color-mix(in oklab, var(--cyan) 12%, transparent)" : "var(--surface)" }}>
                 <meta.icon className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
@@ -83,7 +83,7 @@ export function PresetsPage({ config, refresh }: { config: VaultConfigDto | null
             { name: "Setup Executables", pattern: "setup.exe, install.exe" },
             { name: "Self-extracting archives", pattern: "*.exe (SFX signature)" },
           ].map(r => (
-            <div key={r.name} className="flex items-center gap-4 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+            <div key={r.name} className="flex items-center gap-4 p-3 rounded-lg bg-surface border border-surface-border">
               <div className="flex-1">
                 <div className="text-sm font-medium">{r.name}</div>
                 <code className="text-xs text-[color:var(--muted-foreground)]">{r.pattern}</code>

@@ -57,8 +57,7 @@ export function UnlockWidget() {
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "transparent" }}>
-      <div className="w-[400px] rounded-2xl overflow-hidden shadow-2xl"
-           style={{ background: "oklch(0.16 0.005 270 / 0.95)", border: "1px solid oklch(1 0 0 / 0.08)" }}>
+      <div className="w-[400px] rounded-2xl overflow-hidden shadow-2xl glass">
         <div data-tauri-drag-region
              className="h-10 w-full flex items-center justify-center cursor-move"
              style={{ background: "var(--gradient-brand)" }}>
@@ -97,7 +96,7 @@ export function UnlockWidget() {
                 onKeyDown={handleKeyDown}
                 placeholder="Master password"
                 autoFocus
-                className="w-full px-4 py-3 rounded-lg bg-white/[0.04] border border-white/10 text-sm outline-none focus:border-[color:var(--primary)]/50 mb-4 placeholder:text-[color:var(--muted-foreground)]"
+                className="w-full px-4 py-3 rounded-lg bg-surface border border-surface-border text-sm outline-none focus:border-[color:var(--primary)]/50 mb-4 placeholder:text-[color:var(--muted-foreground)]"
               />
 
               <button

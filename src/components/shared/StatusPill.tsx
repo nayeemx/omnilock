@@ -6,7 +6,7 @@ export function StatusPill({ locked }: { locked: boolean }) {
       <Lock className="w-3 h-3" /> Protected
     </span>
   ) : (
-    <span className="text-xs px-2.5 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10 flex items-center gap-1.5">
+    <span className="text-xs px-2.5 py-1 rounded-full bg-surface text-[color:var(--muted-foreground)] border border-surface-border flex items-center gap-1.5">
       <Unlock className="w-3 h-3" /> Unlocked
     </span>
   );

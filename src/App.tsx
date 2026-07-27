@@ -147,7 +147,7 @@ export default function App() {
             <div className="glass rounded-2xl p-6 space-y-4">
               {githubStep === "code" ? (
                 <div className="space-y-4">
-                  <div className="p-4 rounded-lg bg-white/[0.04] border border-white/10 text-center">
+                  <div className="p-4 rounded-lg bg-surface border border-surface-border text-center">
                     <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)] mb-2">
                       Enter this code on GitHub
                     </div>
@@ -156,7 +156,7 @@ export default function App() {
                         {githubUserCode}
                       </span>
                       <button onClick={copyGithubCode}
-                              className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] transition-colors">
+                              className="p-2 rounded-lg bg-surface hover:bg-surface-hover transition-colors">
                         {githubCopied ? (
                           <span className="text-[color:var(--success)] text-xs">Copied!</span>
                         ) : (

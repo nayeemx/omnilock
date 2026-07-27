@@ -200,7 +200,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             {twoFaState === "enabled" ? (
               <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Enforced</span>
             ) : (
-              <span className="ml-auto text-xs px-2 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10">Disabled</span>
+              <span className="ml-auto text-xs px-2 py-1 rounded-full bg-surface text-[color:var(--muted-foreground)] border border-surface-border">Disabled</span>
             )}
           </div>
           <p className="text-xs text-[color:var(--muted-foreground)] mb-5">Compatible with Google Authenticator, Authy, Microsoft Authenticator & 1Password.</p>
@@ -239,8 +239,8 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
                 <div>
                   <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">Secret Key</div>
                   <div className="flex items-center gap-2 mt-1">
-                    <code className="flex-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-xs tracking-wider break-all">{totpSecret}</code>
-                    <button onClick={() => navigator.clipboard.writeText(totpSecret)} className="p-2 rounded-lg bg-white/[0.04] border border-white/10 hover:bg-white/[0.08]"><Copy className="w-4 h-4" /></button>
+                    <code className="flex-1 px-3 py-2 rounded-lg bg-surface border border-surface-border text-xs tracking-wider break-all">{totpSecret}</code>
+                    <button onClick={() => navigator.clipboard.writeText(totpSecret)} className="p-2 rounded-lg bg-surface border border-surface-border hover:bg-surface-active"><Copy className="w-4 h-4" /></button>
                   </div>
                 </div>
                 <div>
@@ -252,7 +252,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
                 </div>
                 <div className="flex gap-3">
                   <button onClick={cancelSetup}
-                          className="px-4 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/10 hover:bg-white/[0.08]">
+                          className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active">
                     Cancel
                   </button>
                   <button onClick={handleEnable2FA} disabled={!verifyCode || verifyCode.length !== 6 || loading}
@@ -285,8 +285,8 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
               { n: 2, label: "Recovery Key", meta: config?.recovery_key ? "Generated \u00b7 View to copy" : "Not generated", ok: !!config?.recovery_key },
               { n: 3, label: "USB Hardware Key", meta: config?.usb_key_enabled ? `Enrolled \u00b7 ${config.usb_key_drive_label}` : "Not enrolled", ok: !!config?.usb_key_enabled },
             ].map(r => (
-              <li key={r.n} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
-                <div className={`w-8 h-8 rounded-full grid place-items-center text-xs font-semibold ${r.ok ? "text-[color:var(--primary-foreground)]" : "text-[color:var(--muted-foreground)] bg-white/[0.05]"}`}
+              <li key={r.n} className="flex items-center gap-3 p-3 rounded-lg bg-surface border border-surface-border">
+                <div className={`w-8 h-8 rounded-full grid place-items-center text-xs font-semibold ${r.ok ? "text-[color:var(--primary-foreground)]" : "text-[color:var(--muted-foreground)] bg-surface"}`}
                      style={r.ok ? { background: "var(--gradient-brand)" } : undefined}>
                   {r.n}
                 </div>
@@ -308,8 +308,8 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             <div className="mt-4 space-y-2">
               <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">Your Recovery Key</div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-xs break-all font-mono">{recoveryKey}</code>
-                <button onClick={() => navigator.clipboard.writeText(recoveryKey)} className="p-2 rounded-lg bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] shrink-0"><Copy className="w-4 h-4" /></button>
+                <code className="flex-1 px-3 py-2 rounded-lg bg-surface border border-surface-border text-xs break-all font-mono">{recoveryKey}</code>
+                <button onClick={() => navigator.clipboard.writeText(recoveryKey)} className="p-2 rounded-lg bg-surface border border-surface-border hover:bg-surface-active shrink-0"><Copy className="w-4 h-4" /></button>
               </div>
               <p className="text-[10px] text-[color:var(--warning)]">Save this key somewhere safe. It can recover your vault if you forget your password.</p>
             </div>
@@ -326,7 +326,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           <p className="text-xs text-[color:var(--muted-foreground)] mb-4">Instantly mutes all audio and locks the Windows session. Press Win+Alt+L from anywhere.</p>
           <div className="flex items-center gap-2">
             {["Win", "Alt", "L"].map(k => (
-              <kbd key={k} className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm font-mono">{k}</kbd>
+              <kbd key={k} className="px-3 py-2 rounded-lg bg-surface border border-surface-border text-sm font-mono">{k}</kbd>
             ))}
           </div>
         </div>
@@ -348,7 +348,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
                       className={`px-2 py-2 rounded-lg text-xs border transition ${
                         autoLockMins === o.value
                           ? "border-[color:var(--primary)]/50 bg-[color:var(--primary)]/10 text-[color:var(--primary)]"
-                          : "border-white/10 bg-white/[0.02] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                          : "border-surface-border bg-surface text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
                       }`}>
                 {o.label}
               </button>
@@ -367,7 +367,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           {config?.usb_key_enabled ? (
             <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Enrolled</span>
           ) : (
-            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10">Not enrolled</span>
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-surface text-[color:var(--muted-foreground)] border border-surface-border">Not enrolled</span>
           )}
         </div>
         <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
@@ -417,7 +417,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
         ) : (
           <div className="space-y-3">
             <button onClick={handleScanUsbDrives}
-                    className="px-4 py-2 rounded-lg text-sm bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] flex items-center gap-2">
+                    className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active flex items-center gap-2">
               <Usb className="w-4 h-4" /> Scan for Pendrives
             </button>
             {usbDrives.length > 0 && (
@@ -429,7 +429,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
                             className={`w-full flex items-center gap-3 p-3 rounded-lg border transition ${
                               usbSelectedDrive === d.letter
                                 ? "border-[color:var(--primary)]/50 bg-[color:var(--primary)]/10"
-                                : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
+                                : "border-surface-border bg-surface hover:bg-surface-hover"
                             }`}>
                       <Usb className="w-4 h-4 text-[color:var(--primary)]" />
                       <div className="text-left">
@@ -457,7 +457,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           {config?.cloud_sync_enabled ? (
             <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Active</span>
           ) : (
-            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10">Not connected</span>
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-surface text-[color:var(--muted-foreground)] border border-surface-border">Not connected</span>
           )}
         </div>
         <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
@@ -497,7 +497,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           </div>
         ) : (
           <button onClick={handleCheckUpdate} disabled={updateChecking}
-                  className="px-4 py-2 rounded-lg text-sm font-medium bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] disabled:opacity-40 flex items-center gap-2">
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-surface-border hover:bg-surface-active disabled:opacity-40 flex items-center gap-2">
             {updateChecking ? "Checking..." : "Check for Updates"}
             <Download className="w-4 h-4" />
           </button>

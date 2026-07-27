@@ -92,7 +92,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                   {pwChecks.map(c => (
                     <div key={c.label} className={`flex items-center gap-1.5 text-[11px] ${c.ok ? "text-[color:var(--success)]" : "text-[color:var(--muted-foreground)]"}`}>
-                      <span className={`w-3.5 h-3.5 rounded-full grid place-items-center text-[9px] font-bold ${c.ok ? "bg-[color:var(--success)]/20" : "bg-white/[0.05] border border-white/10"}`}>
+                      <span className={`w-3.5 h-3.5 rounded-full grid place-items-center text-[9px] font-bold ${c.ok ? "bg-[color:var(--success)]/20" : "bg-surface border border-surface-border"}`}>
                         {c.ok ? "\u2713" : ""}
                       </span>
                       {c.label}
@@ -123,7 +123,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
               <label className="block">
                 <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)] mb-1.5">Security question</div>
                 <select value={question} onChange={e => setQuestion(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/10 text-sm outline-none focus:border-[color:var(--primary)]/50 transition-colors">
+                        className="w-full px-3 py-2.5 rounded-lg bg-surface border border-surface-border text-sm outline-none focus:border-[color:var(--primary)]/50 transition-colors">
                   {securityQuestions.map(q => <option key={q} value={q} className="bg-[#1a1a2e]">{q}</option>)}
                 </select>
               </label>
@@ -132,7 +132,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
                        className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
               </Field>
               <div className="flex gap-3">
-                <button onClick={() => setStep(1)} className="flex-1 px-4 py-2.5 rounded-lg text-sm bg-white/[0.04] border border-white/10 hover:bg-white/[0.08]">
+                <button onClick={() => setStep(1)} className="flex-1 px-4 py-2.5 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active">
                   Back
                 </button>
                 <button onClick={handleFinish} disabled={!answer.trim() || loading}
