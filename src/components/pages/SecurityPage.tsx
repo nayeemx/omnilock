@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   QrCode, KeyRound, Copy, ArrowRight, CheckCircle2,
   AlertTriangle, Power, Activity, ShieldAlert, Download, Upload,
-  Usb, Github, Cloud,
+  Usb, Github, Cloud, Fingerprint,
 } from "lucide-react";
 import {
   generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock,
   checkForUpdates, installUpdate, getRecoveryKey,
   listUsbDrives, enrollUsbKey, removeUsbKey, detectUsbKey,
   backupVault, restoreVault, pickDirectory,
+  checkBiometric, toggleBiometric,
   type VaultConfigDto, type UsbDriveInfo,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -37,6 +38,39 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
   const [usbSelectedDrive, setUsbSelectedDrive] = useState("");
   const [usbLoading, setUsbLoading] = useState(false);
   const [usbError, setUsbError] = useState("");
+  const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [biometricPw, setBiometricPw] = useState("");
+
+  useEffect(() => {
+    checkBiometric().then(s => setBiometricAvailable(s.available)).catch(() => setBiometricAvailable(false));
+  }, []);
+
+  const handleToggleBiometric = async () => {
+    if (config?.biometric_enabled) {
+      setBiometricLoading(true);
+      setError("");
+      try {
+        await toggleBiometric(false);
+        await refresh();
+      } catch (e: any) {
+        setError("Failed to disable biometric: " + e);
+      }
+      setBiometricLoading(false);
+    } else {
+      if (!biometricPw) return;
+      setBiometricLoading(true);
+      setError("");
+      try {
+        await toggleBiometric(true, biometricPw);
+        setBiometricPw("");
+        await refresh();
+      } catch (e: any) {
+        setError("Failed to enable biometric: " + e);
+      }
+      setBiometricLoading(false);
+    }
+  };
 
   const start2faSetup = async () => {
     setTwoFaState("setup");
@@ -363,6 +397,48 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             Vault stored at <code>%APPDATA%\InnologyBD\OmniLock\vault.enc</code>
           </div>
         </div>
+      </div>
+
+      <div className="glass rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Fingerprint className="w-5 h-5 text-[color:var(--primary)]" />
+          <h3 className="font-semibold">Biometric Login (Windows Hello)</h3>
+          {config?.biometric_enabled ? (
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Enabled</span>
+          ) : (
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-surface text-[color:var(--muted-foreground)] border border-surface-border">Disabled</span>
+          )}
+        </div>
+        <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+          Use your fingerprint, face, or PIN to unlock your vault via Windows Hello. No biometric data leaves your device.
+        </p>
+        {biometricAvailable === false && (
+          <div className="mb-3 p-3 rounded-lg bg-[color:var(--warning)]/10 border border-[color:var(--warning)]/30 text-sm text-[color:var(--warning)]">
+            Windows Hello is not available on this device. Set up a fingerprint or PIN in Windows Settings &gt; Accounts &gt; Sign-in options.
+          </div>
+        )}
+        {biometricAvailable === true && (
+          <div className="space-y-3">
+            {!config?.biometric_enabled && (
+              <div>
+                <label className="text-xs text-[color:var(--muted-foreground)] mb-1 block">Enter master password to enable biometric login</label>
+                <input type="password" value={biometricPw} onChange={e => setBiometricPw(e.target.value)}
+                       placeholder="Master password"
+                       className="w-full px-3 py-2 text-sm rounded-lg bg-surface border border-surface-border focus:border-[color:var(--primary)] focus:outline-none text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)]" />
+              </div>
+            )}
+            <button onClick={handleToggleBiometric} disabled={biometricLoading || (!config?.biometric_enabled && !biometricPw)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-40 transition ${
+                      config?.biometric_enabled
+                        ? "border border-[color:var(--destructive)]/30 text-[color:var(--destructive)] hover:bg-[color:var(--destructive)]/10"
+                        : "text-[color:var(--primary-foreground)] glow-cyan"
+                    }`}
+                    style={config?.biometric_enabled ? undefined : { background: "var(--gradient-brand)" }}>
+              <Fingerprint className="w-4 h-4" />
+              {biometricLoading ? "Processing..." : config?.biometric_enabled ? "Disable Biometric Login" : "Enable Biometric Login"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="glass rounded-2xl p-6">

@@ -25,6 +25,7 @@ pub struct VaultConfigDto {
     pub usb_key_drive_label: String,
     pub cloud_sync_enabled: bool,
     pub github_username: String,
+    pub biometric_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +84,7 @@ impl From<&VaultConfig> for VaultConfigDto {
             usb_key_drive_label: config.usb_key_drive_label.clone(),
             cloud_sync_enabled: config.cloud_sync_enabled,
             github_username: config.github_username.clone(),
+            biometric_enabled: config.biometric_enabled,
         }
     }
 }
@@ -136,6 +138,8 @@ pub struct VaultConfig {
     pub github_user_id: u64,
     #[serde(default)]
     pub cloud_sync_enabled: bool,
+    #[serde(default)]
+    pub biometric_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +194,7 @@ impl Default for VaultConfig {
             github_username: String::new(),
             github_user_id: 0,
             cloud_sync_enabled: false,
+            biometric_enabled: false,
         }
     }
 }

@@ -33,6 +33,7 @@ export interface VaultConfigDto {
   usb_key_drive_label: string;
   cloud_sync_enabled: boolean;
   github_username: string;
+  biometric_enabled: boolean;
 }
 
 export interface WatchdogStatusDto {
@@ -374,4 +375,29 @@ export async function getSystemStats(): Promise<SystemStats> {
 
 export async function getWeather(location?: string): Promise<WeatherData> {
   return invoke("cmd_get_weather", { location: location ?? null });
+}
+
+export interface BiometricStatus {
+  available: boolean;
+  reason: string;
+}
+
+export async function checkBiometric(): Promise<BiometricStatus> {
+  return invoke("cmd_check_biometric");
+}
+
+export async function authenticateBiometric(message: string): Promise<boolean> {
+  return invoke("cmd_authenticate_biometric", { message });
+}
+
+export async function toggleBiometric(enabled: boolean, password?: string): Promise<void> {
+  return invoke("cmd_toggle_biometric", { enabled, password: password ?? null });
+}
+
+export async function biometricLogin(): Promise<void> {
+  return invoke("cmd_biometric_login");
+}
+
+export async function hasBiometricToken(): Promise<boolean> {
+  return invoke("cmd_has_biometric_token");
 }

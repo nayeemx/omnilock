@@ -61,6 +61,21 @@ pub fn setup_vault(payload: SetupPayload) -> Result<(), String> {
     Ok(())
 }
 
+pub fn create_session_token() -> Result<SessionToken, String> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let mut token_bytes = [0u8; 32];
+    getrandom::getrandom(&mut token_bytes).expect("Failed to generate token");
+
+    Ok(SessionToken {
+        token: B64.encode(&token_bytes),
+        expires_at: now + 3600,
+    })
+}
+
 pub fn unlock_session(auth: AuthPayload) -> Result<SessionToken, String> {
     let config = vault::decrypt_vault(&auth.master_password)?;
 
@@ -90,20 +105,7 @@ pub fn unlock_session(auth: AuthPayload) -> Result<SessionToken, String> {
         }
     }
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let mut token_bytes = [0u8; 32];
-    getrandom::getrandom(&mut token_bytes).expect("Failed to generate token");
-
-    let token = SessionToken {
-        token: B64.encode(&token_bytes),
-        expires_at: now + 3600,
-    };
-
-    Ok(token)
+    create_session_token()
 }
 
 pub fn verify_security_answer(answer: &str, stored_hash: &[u8]) -> bool {

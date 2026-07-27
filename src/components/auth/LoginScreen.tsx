@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ShieldCheck, Fingerprint, Activity,
   Lock, Eye, EyeOff, ArrowRight, CheckCircle2, HelpCircle, KeyRound,
@@ -8,17 +8,37 @@ import {
   unlockSession, getSecurityQuestion, resetPassword,
   recoverWithKey, recoverWithUsbKey,
   githubStartDeviceFlow, githubPollToken, openExternalUrl,
+  checkBiometric, authenticateBiometric, biometricLogin,
 } from "../../lib/tauri-bridge";
 import { Field } from "../shared/Field";
 
 type ResetMode = "select" | "question" | "recovery_key" | "usb_key";
 
-export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; onUnlock: () => void }) {
+export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpEnabled: boolean; biometricEnabled: boolean; onUnlock: () => void }) {
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    checkBiometric().then(s => setBiometricAvailable(s.available)).catch(() => setBiometricAvailable(false));
+  }, []);
+
+  const handleBiometricLogin = async () => {
+    setBiometricLoading(true);
+    setError("");
+    try {
+      await authenticateBiometric("Verify identity to unlock OmniLock");
+      await biometricLogin();
+      await onUnlock();
+    } catch (e: any) {
+      setError(String(e));
+    }
+    setBiometricLoading(false);
+  };
 
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubStep, setGithubStep] = useState<"idle" | "code" | "polling">("idle");
@@ -433,6 +453,25 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
+
+              {biometricEnabled && biometricAvailable && (
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-surface-border"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[11px]">
+                    <span className="px-3 text-[color:var(--muted-foreground)]" style={{ background: "var(--background)" }}>or</span>
+                  </div>
+                </div>
+              )}
+
+              {biometricEnabled && biometricAvailable && (
+                <button onClick={handleBiometricLogin} disabled={biometricLoading}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 transition-colors disabled:opacity-40">
+                  <Fingerprint className="w-4 h-4" />
+                  {biometricLoading ? "Verifying..." : "Login with Fingerprint"}
+                </button>
+              )}
 
               <div className="mt-4 text-center">
                 <button onClick={() => { setResetMode("select"); setResetError(""); }} disabled={resetLoading}

@@ -3,6 +3,7 @@ import { Github, ArrowRight, Loader2 } from "lucide-react";
 import {
   getVaultStatus, getVaultConfig, lockNow,
   githubGetStatus, githubStartDeviceFlow, githubPollToken, openExternalUrl,
+  hasBiometricToken,
   type VaultStatusDto, type VaultConfigDto, type GitHubSyncStatusDto,
 } from "./lib/tauri-bridge";
 import { SetupWizard } from "./components/auth/SetupWizard";
@@ -35,11 +36,13 @@ export default function App() {
   const [githubCopied, setGithubCopied] = useState(false);
   const [githubError, setGithubError] = useState("");
   const [showSkipGithub, setShowSkipGithub] = useState(false);
+  const [hasBiometric, setHasBiometric] = useState(false);
 
   useEffect(() => {
     if (!widgetMode) {
       getVaultStatus().then(setVaultStatus).catch(console.error);
       githubGetStatus().then(setGithubStatus).catch(console.error);
+      hasBiometricToken().then(setHasBiometric).catch(() => {});
     }
   }, [widgetMode]);
 
@@ -199,7 +202,7 @@ export default function App() {
   }
 
   if (!isUnlocked) {
-    return <LoginScreen totpEnabled={vaultStatus.totp_enabled} onUnlock={handleUnlock} />;
+    return <LoginScreen totpEnabled={vaultStatus.totp_enabled} biometricEnabled={hasBiometric} onUnlock={handleUnlock} />;
   }
 
   return (

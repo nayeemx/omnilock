@@ -28,7 +28,7 @@ pub struct VaultRecoveryData {
     pub key_nonce: Vec<u8>,
 }
 
-fn vault_path() -> PathBuf {
+pub fn vault_path() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     let dir = PathBuf::from(appdata).join(VAULT_DIR);
     fs::create_dir_all(&dir).ok();

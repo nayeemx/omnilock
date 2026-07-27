@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T08:00:00Z",
-  "version": "v0.0.17",
-  "notes": "Weather search: type any city name to see weather for that location. Auto-detect still works by default.",
+  "pub_date": "2026-07-28T08:30:00Z",
+  "version": "v0.0.18",
+  "notes": "Windows Hello fingerprint login. Enable in Security page, then use fingerprint on login screen.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.17/OmniLock_0.0.17_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1FoMnUvUktvbkhtWGtjR3U2b0ZCcFNubkp5QTdWQm8rbjQvVWEyYXk1NC8wcjJBenV4TEEwT2dpSUVvNlYybks3WW9IdElxQlhBeWhaUmp4SkN3SkFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTkxMTczCWZpbGU6T21uaUxvY2tfMC4wLjE3X3g2NC1zZXR1cC5leGUKRnBTdCsyTFRLcTBUREsyV2orTkFaOGc0WWJCeWJ4YWxXM0NPcnBVRzh4WHN3b0tpQms0RHRxS0tsMkhSODNDV3poSGxleVFsUytZcGFsVW1GbjhFQnc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.18/OmniLock_0.0.18_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1k3dFJERWE5cVRLcHdTYlM0WkFRSDVtZHlhWWwrcENjYUZlUVpYZkhYVENGYnF3VzdCUHBmTlFHRHhyaU13cGFwei96VFpzK0kremRYWVpDNXhhU3dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTkzNTA1CWZpbGU6T21uaUxvY2tfMC4wLjE4X3g2NC1zZXR1cC5leGUKWksxRDVMbFhGWDlaclZ6V09ZMWo3S2NzMGg4MStiNjJIby9Zbk9HM3oxbUdLT1RNSDN0WU0wc3ZuS3RTaDdBZU5lNjFvdkhUWCtMT0tnNXd3bkZLRGc9PQo="
     }
   }
 }

@@ -8,6 +8,7 @@ pub mod process_guard;
 pub mod system_presets;
 pub mod installer_guard;
 pub mod panic_hotkey;
+pub mod biometric;
 pub mod file_locker;
 pub mod drive_locker;
 pub mod watchdog;
@@ -945,6 +946,65 @@ async fn cmd_get_weather(location: Option<String>) -> Result<system_monitor::Wea
     system_monitor::get_weather(location).await
 }
 
+#[tauri::command]
+fn cmd_check_biometric() -> biometric::BiometricStatus {
+    biometric::check_biometric_available()
+}
+
+#[tauri::command]
+async fn cmd_authenticate_biometric(message: String) -> Result<bool, String> {
+    biometric::authenticate_biometric(message).await
+}
+
+#[tauri::command]
+fn cmd_toggle_biometric(state: State<'_, AppState>, enabled: bool, password: Option<String>) -> Result<(), String> {
+    let pw = if let Some(p) = &password {
+        p.clone()
+    } else {
+        let guard = state.password.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().ok_or("Session not unlocked")?.clone()
+    };
+
+    if enabled {
+        biometric::save_biometric_token(&pw).map_err(|e| e.to_string())?;
+    } else {
+        biometric::remove_biometric_token().map_err(|e| e.to_string())?;
+    }
+
+    let mut config = vault::decrypt_vault(&pw).map_err(|e| e.to_string())?;
+    config.biometric_enabled = enabled;
+    vault::encrypt_vault(&config, &pw).map_err(|e| e.to_string())?;
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    *config_guard = Some(config.into());
+    Ok(())
+}
+
+#[tauri::command]
+async fn cmd_biometric_login(state: State<'_, AppState>) -> Result<(), String> {
+    let password = biometric::load_biometric_token().map_err(|e| e.to_string())?;
+    let config = vault::decrypt_vault(&password).map_err(|e| format!("Wrong password: {}", e))?;
+    let session_token = auth::create_session_token().map_err(|e| e.to_string())?;
+    {
+        let mut token_guard = state.session_token.lock().map_err(|e| e.to_string())?;
+        *token_guard = Some(session_token);
+    }
+    {
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        *config_guard = Some(config.clone().into());
+    }
+    {
+        let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        *password_guard = Some(password);
+    }
+    process_guard::update_locked_apps(config.locked_apps.clone());
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_has_biometric_token() -> bool {
+    biometric::has_biometric_token()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState {
@@ -1010,6 +1070,11 @@ pub fn run() {
             cmd_restore_vault,
             cmd_get_system_stats,
             cmd_get_weather,
+            cmd_check_biometric,
+            cmd_authenticate_biometric,
+            cmd_toggle_biometric,
+            cmd_biometric_login,
+            cmd_has_biometric_token,
         ])
         .setup(|app| {
             #[cfg(desktop)]
