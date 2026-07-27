@@ -1,11 +1,11 @@
 {
   "pub_date": "2026-07-27T23:59:59Z",
-  "version": "v0.1.0",
-  "notes": "Critical bug fixes: widget unlock now properly notifies service to remove ACL. 15 new vault encryption unit tests. Shared protocol crate. Process monitor optimization. Panic hotkey windows-sys refactor.",
+  "version": "v0.2.0",
+  "notes": "Light theme with system preference detection. Semantic surface tokens replace hardcoded dark-mode values. Better GitHub OAuth error handling.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.0/OmniLock_0.1.0_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2FOSCtnTzFRNkx4dzB0c3RMT1FIdzBxTzRCYzd3aFZ3NGFHMTREd0NMRDVVSnlRditrd3VwSHpscUhOL2V1VjdTK1hVT291SC9OR3BVUU40bEE5Unc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTI5MDk5CWZpbGU6T21uaUxvY2tfMC4xLjBfeDY0LXNldHVwLmV4ZQo3aCtlU1dpdkUrOTB6TTVSMTBvNWFhWnlzRXVqWlV1a2dETEVSejZKZ1dSaWJ5eloxNWhHZThPZHNNVzBNQUVnU1lNY0dDT0xtOUR1SnlmWVVBTkhDZz09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.2.0/OmniLock_0.2.0_x64-setup.exe",
+      "signature": "PLACEHOLDER_SIGNATURE_RUN_TAURI_SIGN"
     }
   }
 }

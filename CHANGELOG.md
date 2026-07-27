@@ -4,6 +4,20 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.2.0] - 2026-07-27
+
+### Added
+- Light theme support with system preference auto-detection (`prefers-color-scheme`)
+- Dark mode via Tailwind `class` strategy (was hardcoded dark-only)
+- Semantic `surface` color tokens across all components (replaces hardcoded `bg-white/[0.04]` etc.)
+- Light scrollbar styles
+- `glass-subtle` and widget adapt to active theme
+
+### Fixed
+- GitHub OAuth device flow: better error message when client ID is invalid or not registered
+
+---
+
 ## [0.1.0] - 2026-07-27
 
 ### Added
