@@ -385,3 +385,208 @@ pub fn derive_recovery_key_material(recovery_key: &str) -> Vec<u8> {
     hasher.update(recovery_key.as_bytes());
     hasher.finalize().to_vec()
 }
+
+pub fn encrypt_vault_to_bytes(config: &VaultConfig, password: &str) -> Result<Vec<u8>, String> {
+    let json = serde_json::to_vec(config).map_err(|e| e.to_string())?;
+    let key_material = hash_password(password, &config.password_salt)?;
+    let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&key_material);
+    let cipher = Aes256Gcm::new(key);
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::getrandom(&mut nonce_bytes).expect("Failed to generate nonce");
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, json.as_ref())
+        .map_err(|e| e.to_string())?;
+    let encrypted = EncryptedVault {
+        header: *HEADER_MAGIC,
+        version: 1,
+        salt: config.password_salt.clone(),
+        nonce: nonce_bytes.to_vec(),
+        ciphertext,
+        tag: Vec::new(),
+    };
+    serde_json::to_vec(&encrypted).map_err(|e| e.to_string())
+}
+
+pub fn decrypt_vault_from_bytes(data: &[u8], password: &str) -> Result<VaultConfig, String> {
+    let encrypted: EncryptedVault =
+        serde_json::from_slice(data).map_err(|e| format!("Invalid vault format: {}", e))?;
+    if encrypted.header != *HEADER_MAGIC {
+        return Err("Invalid vault header".to_string());
+    }
+    if encrypted.salt.is_empty() {
+        return Err("Vault missing salt".to_string());
+    }
+    let key_material = hash_password(password, &encrypted.salt)?;
+    let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&key_material);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Nonce::from_slice(&encrypted.nonce);
+    let plaintext = cipher
+        .decrypt(nonce, encrypted.ciphertext.as_ref())
+        .map_err(|_| "Decryption failed - wrong password".to_string())?;
+    let config: VaultConfig =
+        serde_json::from_slice(&plaintext).map_err(|e| format!("Invalid config: {}", e))?;
+    Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::SystemPresets;
+
+    fn test_config() -> VaultConfig {
+        VaultConfig {
+            password_hash: vec![1, 2, 3],
+            password_salt: vec![0xAA; 16],
+            security_question: "What is your pet's name?".into(),
+            security_answer_hash: vec![7, 8, 9],
+            recovery_key: "RECOVERY-KEY-123".into(),
+            locked_apps: vec![],
+            system_presets: SystemPresets::default(),
+            installer_guard_enabled: false,
+            locked_files: vec![],
+            locked_folders: vec![],
+            locked_drives: vec![],
+            auto_lock_minutes: 5,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_hash_password_deterministic() {
+        let salt = vec![0xAA; 16];
+        let h1 = hash_password("mypassword", &salt).unwrap();
+        let h2 = hash_password("mypassword", &salt).unwrap();
+        assert_eq!(h1, h2, "same input must produce same hash");
+        assert_eq!(h1.len(), 32);
+    }
+
+    #[test]
+    fn test_hash_password_different_passwords() {
+        let salt = vec![0xBB; 16];
+        let h1 = hash_password("password1", &salt).unwrap();
+        let h2 = hash_password("password2", &salt).unwrap();
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_hash_password_different_salts() {
+        let h1 = hash_password("same", &[0x01; 16]).unwrap();
+        let h2 = hash_password("same", &[0x02; 16]).unwrap();
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_generate_salt_length() {
+        let salt = generate_salt();
+        assert_eq!(salt.len(), 16);
+    }
+
+    #[test]
+    fn test_generate_salt_random() {
+        let s1 = generate_salt();
+        let s2 = generate_salt();
+        assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_bytes_roundtrip() {
+        let mut key_material = vec![0u8; 32];
+        getrandom::getrandom(&mut key_material).unwrap();
+
+        let plaintext = b"hello omnilock";
+        let (ciphertext, nonce) = encrypt_bytes(plaintext, &key_material).unwrap();
+        assert_ne!(ciphertext, plaintext);
+
+        let decrypted = decrypt_bytes(&ciphertext, &key_material, &nonce).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_wrong_key_fails() {
+        let mut key1 = vec![0u8; 32];
+        let mut key2 = vec![0u8; 32];
+        getrandom::getrandom(&mut key1).unwrap();
+        getrandom::getrandom(&mut key2).unwrap();
+
+        let (ciphertext, nonce) = encrypt_bytes(b"secret", &key1).unwrap();
+        let result = decrypt_bytes(&ciphertext, &key2, &nonce);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decrypt_wrong_nonce_fails() {
+        let mut key = vec![0u8; 32];
+        getrandom::getrandom(&mut key).unwrap();
+        let wrong_nonce = vec![0xFF; 12];
+
+        let (ciphertext, _nonce) = encrypt_bytes(b"secret", &key).unwrap();
+        let result = decrypt_bytes(&ciphertext, &key, &wrong_nonce);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_vault_encrypt_decrypt_roundtrip() {
+        let config = test_config();
+        let password = "TestPassword123!";
+
+        let encrypted_bytes = encrypt_vault_to_bytes(&config, password).unwrap();
+        let decrypted_config = decrypt_vault_from_bytes(&encrypted_bytes, password).unwrap();
+
+        assert_eq!(decrypted_config.security_question, config.security_question);
+        assert_eq!(decrypted_config.recovery_key, config.recovery_key);
+        assert_eq!(decrypted_config.auto_lock_minutes, config.auto_lock_minutes);
+    }
+
+    #[test]
+    fn test_vault_wrong_password_fails() {
+        let config = test_config();
+        let encrypted = encrypt_vault_to_bytes(&config, "correct").unwrap();
+        let result = decrypt_vault_from_bytes(&encrypted, "wrong");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("wrong password"));
+    }
+
+    #[test]
+    fn test_vault_header_magic() {
+        let config = test_config();
+        let encrypted = encrypt_vault_to_bytes(&config, "pw").unwrap();
+        let parsed: EncryptedVault = serde_json::from_slice(&encrypted).unwrap();
+        assert_eq!(&parsed.header, b"OMNI");
+        assert_eq!(parsed.version, 1);
+        assert!(!parsed.salt.is_empty());
+    }
+
+    #[test]
+    fn test_vault_invalid_header() {
+        let config = test_config();
+        let mut parsed: EncryptedVault =
+            serde_json::from_slice(&encrypt_vault_to_bytes(&config, "pw").unwrap()).unwrap();
+        parsed.header = *b"XXXX";
+        let tampered = serde_json::to_vec(&parsed).unwrap();
+        let result = decrypt_vault_from_bytes(&tampered, "pw");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid vault header"));
+    }
+
+    #[test]
+    fn test_derive_recovery_key_material_deterministic() {
+        let k1 = derive_recovery_key_material("key-123");
+        let k2 = derive_recovery_key_material("key-123");
+        assert_eq!(k1, k2);
+        assert_eq!(k1.len(), 32);
+    }
+
+    #[test]
+    fn test_derive_recovery_key_material_different_keys() {
+        let k1 = derive_recovery_key_material("key-a");
+        let k2 = derive_recovery_key_material("key-b");
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn test_vault_empty_data_fails() {
+        let result = decrypt_vault_from_bytes(b"", "pw");
+        assert!(result.is_err());
+    }
+}

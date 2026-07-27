@@ -7,6 +7,7 @@ export interface VaultStatusDto {
   totp_enabled: boolean;
   publisher: string;
   version: string;
+  github_connected: boolean;
 }
 
 export interface VaultConfigDto {
@@ -29,6 +30,8 @@ export interface VaultConfigDto {
   security_question: string;
   usb_key_enabled: boolean;
   usb_key_drive_label: string;
+  cloud_sync_enabled: boolean;
+  github_username: string;
 }
 
 export interface WatchdogStatusDto {
@@ -248,4 +251,56 @@ export async function installUpdate(): Promise<void> {
     });
     await relaunch();
   }
+}
+
+export interface GitHubSyncStatusDto {
+  connected: boolean;
+  github_user: string | null;
+  avatar_url: string | null;
+  last_sync: number | null;
+  device_id: string;
+}
+
+export interface GitHubDeviceFlowDto {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export async function githubStartDeviceFlow(): Promise<GitHubDeviceFlowDto> {
+  return invoke("cmd_github_start_device_flow");
+}
+
+export async function githubPollToken(
+  deviceCode: string,
+  interval: number,
+  expiresIn: number
+): Promise<GitHubSyncStatusDto> {
+  return invoke("cmd_github_poll_token", { deviceCode, interval, expiresIn });
+}
+
+export async function githubGetStatus(): Promise<GitHubSyncStatusDto> {
+  return invoke("cmd_github_get_status");
+}
+
+export async function githubConnectToken(token: string): Promise<GitHubSyncStatusDto> {
+  return invoke("cmd_github_connect_token", { token });
+}
+
+export async function githubDisconnect(): Promise<void> {
+  return invoke("cmd_github_disconnect");
+}
+
+export async function githubSyncToCloud(): Promise<GitHubSyncStatusDto> {
+  return invoke("cmd_github_sync_to_cloud");
+}
+
+export async function githubSyncFromCloud(): Promise<void> {
+  return invoke("cmd_github_sync_from_cloud");
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  return invoke("cmd_open_external_url", { url });
 }

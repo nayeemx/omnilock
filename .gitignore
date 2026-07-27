@@ -1,6 +1,8 @@
 node_modules/
 dist/
 src-tauri/target/
+service/target/
+shared/target/
 src-tauri/update.key
 src-tauri/update.key.pub
 signing-keys/

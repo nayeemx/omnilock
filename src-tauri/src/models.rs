@@ -6,6 +6,7 @@ pub struct VaultStatusDto {
     pub totp_enabled: bool,
     pub publisher: String,
     pub version: String,
+    pub github_connected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,26 @@ pub struct VaultConfigDto {
     pub security_question: String,
     pub usb_key_enabled: bool,
     pub usb_key_drive_label: String,
+    pub cloud_sync_enabled: bool,
+    pub github_username: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubSyncStatusDto {
+    pub connected: bool,
+    pub github_user: Option<String>,
+    pub avatar_url: Option<String>,
+    pub last_sync: Option<u64>,
+    pub device_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubDeviceFlowDto {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +81,8 @@ impl From<&VaultConfig> for VaultConfigDto {
             security_question: config.security_question.clone(),
             usb_key_enabled: config.usb_key_enabled,
             usb_key_drive_label: config.usb_key_drive_label.clone(),
+            cloud_sync_enabled: config.cloud_sync_enabled,
+            github_username: config.github_username.clone(),
         }
     }
 }
@@ -107,6 +130,12 @@ pub struct VaultConfig {
     pub usb_key_drive_serial: u32,
     #[serde(default)]
     pub usb_key_drive_label: String,
+    #[serde(default)]
+    pub github_username: String,
+    #[serde(default)]
+    pub github_user_id: u64,
+    #[serde(default)]
+    pub cloud_sync_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,6 +187,9 @@ impl Default for VaultConfig {
             usb_key_enabled: false,
             usb_key_drive_serial: 0,
             usb_key_drive_label: String::new(),
+            github_username: String::new(),
+            github_user_id: 0,
+            cloud_sync_enabled: false,
         }
     }
 }

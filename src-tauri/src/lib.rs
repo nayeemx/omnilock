@@ -13,6 +13,8 @@ pub mod drive_locker;
 pub mod watchdog;
 pub mod auto_lock;
 pub mod usb_key;
+pub mod service_client;
+pub mod github_sync;
 
 use tauri::State;
 use tauri::Manager;
@@ -91,11 +93,13 @@ fn save_locked_items_summary(config: &VaultConfig) {
 #[tauri::command]
 fn cmd_get_vault_status(_state: State<'_, AppState>) -> VaultStatusDto {
     let totp_enabled = vault::load_vault_meta();
+    let sync_status = github_sync::get_sync_status();
     VaultStatusDto {
         initialized: vault::vault_exists(),
         totp_enabled,
         publisher: "InnologyBD".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        github_connected: sync_status.connected,
     }
 }
 
@@ -200,6 +204,7 @@ fn cmd_add_locked_drive(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     drive_locker::lock_drive(&drive_letter)?;
+    service_client::notify_lock_drive(&drive_letter);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_drives.contains(&drive_letter) {
@@ -227,11 +232,12 @@ fn cmd_remove_locked_drive(
             .collect::<Vec<_>>()
     };
     drive_locker::unlock_drive(&drive_letter, &remaining)?;
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    service_client::notify_unlock_item(&format!("{}:\\", drive_letter), password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_drives.retain(|d| d != &drive_letter);
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -243,6 +249,7 @@ fn cmd_add_locked_file(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     file_locker::lock_file(&path)?;
+    service_client::notify_lock_file(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_files.contains(&path) {
@@ -251,6 +258,7 @@ fn cmd_add_locked_file(
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -261,12 +269,14 @@ fn cmd_remove_locked_file(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     file_locker::unlock_file(&path)?;
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    service_client::notify_unlock_item(&path, password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_files.retain(|f| f != &path);
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -277,6 +287,7 @@ fn cmd_add_locked_folder(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     file_locker::lock_folder(&path)?;
+    service_client::notify_lock_folder(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_folders.contains(&path) {
@@ -285,6 +296,7 @@ fn cmd_add_locked_folder(
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -295,12 +307,14 @@ fn cmd_remove_locked_folder(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     file_locker::unlock_folder(&path)?;
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    service_client::notify_unlock_item(&path, password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_folders.retain(|f| f != &path);
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -317,8 +331,12 @@ fn cmd_toggle_locked_app(
         app.enabled = enabled;
         if enabled {
             let _ = file_locker::lock_file(&app.path);
+            service_client::notify_lock_file(&app.path);
         } else {
             let _ = file_locker::unlock_file(&app.path);
+            let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+            let password = password_guard.as_ref().ok_or("No password in session")?;
+            service_client::notify_unlock_item(&app.path, password);
         }
     } else {
         return Err(format!("App not found: {}", name));
@@ -328,6 +346,7 @@ fn cmd_toggle_locked_app(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     process_guard::update_locked_apps(apps);
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -340,6 +359,7 @@ fn cmd_add_locked_app(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     let _ = file_locker::lock_file(&path);
+    service_client::notify_lock_file(&path);
     let sha256 = process_guard::compute_file_sha256(&path).unwrap_or_default();
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -356,6 +376,7 @@ fn cmd_add_locked_app(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     process_guard::update_locked_apps(apps);
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -369,6 +390,9 @@ fn cmd_remove_locked_app(
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if let Some(app) = config.locked_apps.iter().find(|a| a.name == name) {
         let _ = file_locker::unlock_file(&app.path);
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("No password in session")?;
+        service_client::notify_unlock_item(&app.path, password);
     }
     config.locked_apps.retain(|a| a.name != name);
     let apps = config.locked_apps.clone();
@@ -376,6 +400,7 @@ fn cmd_remove_locked_app(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     process_guard::update_locked_apps(apps);
+    save_locked_items_summary(config);
     Ok(())
 }
 
@@ -604,12 +629,15 @@ fn cmd_widget_unlock(
     match target.target_type.as_str() {
         "file" => {
             file_locker::unlock_file(&target.target_id)?;
+            service_client::notify_unlock_item(&target.target_id, &password);
         }
         "folder" => {
             file_locker::unlock_folder(&target.target_id)?;
+            service_client::notify_unlock_item(&target.target_id, &password);
         }
         "app" => {
             let _ = file_locker::unlock_file(&target.target_id);
+            service_client::notify_unlock_item(&target.target_id, &password);
             config.locked_apps.retain(|a| a.path != target.target_id);
         }
         "drive" => {
@@ -618,6 +646,7 @@ fn cmd_widget_unlock(
                 .cloned()
                 .collect();
             drive_locker::unlock_drive(&target.target_id, &remaining)?;
+            service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
             config.locked_drives.retain(|d| d != &target.target_id);
         }
         _ => return Err(format!("Unknown target type: {}", target.target_type)),
@@ -670,6 +699,127 @@ fn cmd_widget_list_locked() -> Result<Vec<UnlockTarget>, String> {
     Ok(targets)
 }
 
+#[tauri::command]
+fn cmd_get_service_status() -> bool {
+    service_client::is_service_running()
+}
+
+#[tauri::command]
+async fn cmd_github_start_device_flow() -> Result<models::GitHubDeviceFlowDto, String> {
+    let resp = github_sync::start_device_flow().await?;
+    Ok(models::GitHubDeviceFlowDto {
+        device_code: resp.device_code,
+        user_code: resp.user_code,
+        verification_uri: resp.verification_uri,
+        expires_in: resp.expires_in,
+        interval: resp.interval,
+    })
+}
+
+#[tauri::command]
+async fn cmd_github_poll_token(
+    device_code: String,
+    interval: u64,
+    expires_in: u64,
+) -> Result<models::GitHubSyncStatusDto, String> {
+    let _token = github_sync::poll_for_token(&device_code, interval, expires_in).await?;
+    let status = github_sync::get_sync_status();
+    Ok(models::GitHubSyncStatusDto {
+        connected: status.connected,
+        github_user: status.github_user,
+        avatar_url: status.avatar_url,
+        last_sync: status.last_sync,
+        device_id: status.device_id,
+    })
+}
+
+#[tauri::command]
+fn cmd_github_get_status() -> models::GitHubSyncStatusDto {
+    let status = github_sync::get_sync_status();
+    models::GitHubSyncStatusDto {
+        connected: status.connected,
+        github_user: status.github_user,
+        avatar_url: status.avatar_url,
+        last_sync: status.last_sync,
+        device_id: status.device_id,
+    }
+}
+
+#[tauri::command]
+async fn cmd_github_connect_token(token: String) -> Result<models::GitHubSyncStatusDto, String> {
+    let user = github_sync::verify_github_token(&token).await?;
+    let status = github_sync::connect_with_token(token, user)?;
+    Ok(models::GitHubSyncStatusDto {
+        connected: status.connected,
+        github_user: status.github_user,
+        avatar_url: status.avatar_url,
+        last_sync: status.last_sync,
+        device_id: status.device_id,
+    })
+}
+
+#[tauri::command]
+fn cmd_github_disconnect() -> Result<(), String> {
+    github_sync::disconnect_github()
+}
+
+#[tauri::command]
+async fn cmd_github_sync_to_cloud(
+    state: State<'_, AppState>,
+) -> Result<models::GitHubSyncStatusDto, String> {
+    let vault_data = {
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("Session not unlocked")?;
+        let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_ref().ok_or("Session not unlocked")?;
+        let encrypted = vault::encrypt_vault_to_bytes(config, password)?;
+        encrypted
+    };
+    let status = github_sync::sync_to_cloud(&vault_data).await?;
+    {
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        if let Some(config) = config_guard.as_mut() {
+            config.cloud_sync_enabled = true;
+        }
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("No password in session")?;
+        let config = config_guard.as_ref().unwrap();
+        vault::encrypt_vault(config, password)?;
+    }
+    Ok(models::GitHubSyncStatusDto {
+        connected: status.connected,
+        github_user: status.github_user,
+        avatar_url: status.avatar_url,
+        last_sync: status.last_sync,
+        device_id: status.device_id,
+    })
+}
+
+#[tauri::command]
+async fn cmd_github_sync_from_cloud(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let vault_data = github_sync::sync_from_cloud().await?;
+    let password = {
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        password_guard.as_ref().ok_or("Session not unlocked")?.clone()
+    };
+    let config = vault::decrypt_vault_from_bytes(&vault_data, &password)?;
+    vault::encrypt_vault(&config, &password)?;
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    *config_guard = Some(config.clone());
+    let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    *password_guard = Some(password);
+    process_guard::update_locked_apps(config.locked_apps.clone());
+    save_locked_items_summary(&config);
+    Ok(())
+}
+
+#[tauri::command]
+fn cmd_open_external_url(url: String) -> Result<(), String> {
+    open::that(&url).map_err(|e| format!("Failed to open URL: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_state = AppState {
@@ -720,6 +870,15 @@ pub fn run() {
             cmd_hide_widget,
             cmd_widget_unlock,
             cmd_widget_list_locked,
+            cmd_get_service_status,
+            cmd_github_start_device_flow,
+            cmd_github_poll_token,
+            cmd_github_get_status,
+            cmd_github_connect_token,
+            cmd_github_disconnect,
+            cmd_github_sync_to_cloud,
+            cmd_github_sync_from_cloud,
+            cmd_open_external_url,
         ])
         .setup(|app| {
             #[cfg(desktop)]
@@ -794,7 +953,12 @@ pub fn run() {
                 }
                 "widget" => {
                     if let tauri::WindowEvent::Focused(false) = event {
-                        window.hide().ok();
+                        // Don't hide if there's a pending unlock target
+                        let has_target = UNLOCK_TARGET.get_or_init(|| Mutex::new(None))
+                            .lock().map(|g| g.is_some()).unwrap_or(false);
+                        if !has_target {
+                            window.hide().ok();
+                        }
                     }
                 }
                 _ => {}

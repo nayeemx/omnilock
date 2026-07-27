@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-26T18:15:00Z",
-  "version": "v0.0.8",
-  "notes": "Redesigned app icon with anti-aliased shield+lock. All 16 bug fixes included.",
+  "pub_date": "2026-07-27T23:59:59Z",
+  "version": "v0.1.0",
+  "notes": "Critical bug fixes: widget unlock now properly notifies service to remove ACL. 15 new vault encryption unit tests. Shared protocol crate. Process monitor optimization. Panic hotkey windows-sys refactor.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.8/OmniLock_0.0.8_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRbEF6MENyWW5VUk9UTWZ5S3M3N1JvSGdxUEhiUFNUL0RDeE1DakVrbG9SMERPVWJGalQzSHFRUGR1ODZaTU1nYXlaeWVYc0lJYXNzUFFTYkd6aDZlQWRoaTJLbmNVVmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDY4OTI5CWZpbGU6T21uaUxvY2tfMC4wLjhfeDY0LXNldHVwLmV4ZQpHNk01dlVlTGxrZW1PWHRxTlQ2bXU0ZGZtb2I2WVZhNkZxdUFqWkNIcEp2UThRTUxJSHpzNnB6eVVqQmJsVHEzTEpJdlZUNUMzV3hhQVNFWlk4dUNDZz09Cg=="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.0/OmniLock_0.1.0_x64-setup.exe",
+      "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZTZG0wclpUbG9XVkJzTjJGT1NDdG5UekZSTmt4NGR6QjBjM1JNVDFGSWR6QnhUelJDWXpkM2FGWjNOR0ZITVRSRWQwTk1SRFZWU25sUmRpdHJkM1Z3U0hwc2NVaE9MMlYxVmpkVEsxaFZUMjkxU0M5T1IzQlZVVTQwYkVFNVVuYzRQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpnMU1USTVNRGs1Q1dacGJHVTZUMjF1YVV4dlkydGZNQzR4TGpCZmVEWTBMWE5sZEhWd0xtVjRaUW8zYUN0bFUxZHBka1VyT1RCNlRUVlNNVEJ2TldGaFdubHpSWFZxV2xWMWEyZEVURVZTZWpaS1oxZFNhV0o1ZWxveE5XaEhaVGhQWkhOTlZ6Qk5RVVZuVTFsTlkwZERUMHh0T1VSMVNubG1XVlZCVGtoRFp6MDlDZz09"
     }
   }
 }

@@ -4,7 +4,41 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
-## [1.0.1] - 2026-07-26
+## [0.1.0] - 2026-07-27
+
+### Added
+- GitHub cloud sync via Gist (Device Flow OAuth — placeholder client ID)
+- Service vault-based password verification (Argon2id + AES-256-GCM)
+- GitHub token encrypted at rest using Windows DPAPI
+- Shared protocol crate (`omnilock-shared`) for pipe types
+- 15 vault encryption unit tests
+
+### Fixed
+- **CRITICAL**: Widget unlock now properly notifies service to remove ACL deny (was silently failing)
+- `save_locked_items_summary` now called in all lock/unlock paths (was missing in 7 commands)
+- Pipe IPC: removed `#[serde(tag = "type")]` deserialization mismatch
+- Pipe IPC: replaced `sleep(300ms)` with `FlushFileBuffers` + retry loop (race condition fix)
+- File/folder locking: removed broken `icacls` calls; ACL enforcement delegated to Windows service
+- Service password verification: no longer accepts any password when hash file missing
+- Service `SvcRequest`/`SvcResponse` enums synced between Tauri app and service
+- windows-sys 0.61 migration (HANDLE types, imports, pointer params)
+- Widget no longer hides on unfocus when there's a pending unlock target
+
+### Changed
+- ACL enforcement: `icacls /deny` CLI → Win32 `SetNamedSecurityInfoW` API (in service)
+- Service state saved before ACL operation (prevents data loss on ACL failure)
+- Process monitor sleeps 5s when no apps locked (was 1s always polling)
+- Panic hotkey uses windows-sys imports (was raw FFI for standard APIs)
+- All crates version bumped to 0.1.0
+
+### Security
+- GitHub OAuth token encrypted with DPAPI (was plaintext on disk)
+- Service verifies password by decrypting vault (was bare SHA-256)
+- Widget unlock now properly removes ACL deny (was leaving protection in place)
+
+---
+
+## [0.0.8] - 2026-07-26
 
 ### Added
 - Auto-update system via GitHub Releases (tauri-plugin-updater)
@@ -28,7 +62,7 @@ Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
 ---
 
-## [1.0.0] - 2026-07-26
+## [0.0.7] - 2026-07-26
 
 ### Added
 - Complete UI overhaul: dark obsidian glassmorphism, oklch design tokens, cyan/violet neon accents
@@ -89,13 +123,14 @@ Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 | Process scan + lock/toggle/remove | ✅ Real | IPC wired |
 | System presets (all 6) | ✅ Real | Registry needs admin |
 | Installer guard | ✅ Real | Not tested |
-| File locker (icacls) | ✅ Real | Not tested |
-| Drive locker (DACL + NoDrives) | ✅ Real | Not tested |
+| File locker (Win32 API via service) | ✅ Real | Pipe tested |
+| Drive locker (DACL + NoDrives) | ✅ Real | Pipe tested |
 | Panic hotkey (Win+Alt+L) | ✅ Real | Needs admin + user32 |
 | Process suspension | ✅ Real | Needs admin |
 | Watchdog (self-monitoring) | ✅ Real | Cannot easily test |
 | Password reset UI flow | ✅ Real | TypeScript compiles |
 | Auto-update (GitHub Releases) | ✅ Real | Signed builds |
+| GitHub cloud sync | ⚠️ Placeholder | OAuth client ID needed |
 | Frontend modular structure | ✅ Done | — |
 | Inline error/success feedback | ✅ Done | All pages |
 | Controlled Toggle component | ✅ Done | Parent-driven |

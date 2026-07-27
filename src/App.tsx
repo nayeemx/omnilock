@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield } from "lucide-react";
+import { Shield, Github, ArrowRight, Loader2 } from "lucide-react";
 import {
   getVaultStatus, getVaultConfig, lockNow,
-  type VaultStatusDto, type VaultConfigDto,
+  githubGetStatus, githubStartDeviceFlow, githubPollToken, openExternalUrl,
+  type VaultStatusDto, type VaultConfigDto, type GitHubSyncStatusDto,
 } from "./lib/tauri-bridge";
 import { SetupWizard } from "./components/auth/SetupWizard";
 import { LoginScreen } from "./components/auth/LoginScreen";
@@ -26,10 +27,17 @@ export default function App() {
   const [vaultConfig, setVaultConfig] = useState<VaultConfigDto | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("apps");
+  const [githubStatus, setGithubStatus] = useState<GitHubSyncStatusDto | null>(null);
+  const [githubStep, setGithubStep] = useState<"idle" | "code" | "polling">("idle");
+  const [githubUserCode, setGithubUserCode] = useState("");
+  const [githubCopied, setGithubCopied] = useState(false);
+  const [githubError, setGithubError] = useState("");
+  const [showSkipGithub, setShowSkipGithub] = useState(false);
 
   useEffect(() => {
     if (!widgetMode) {
       getVaultStatus().then(setVaultStatus).catch(console.error);
+      githubGetStatus().then(setGithubStatus).catch(console.error);
     }
   }, [widgetMode]);
 
@@ -65,6 +73,29 @@ export default function App() {
     setVaultConfig(null);
   }, []);
 
+  const handleGitHubConnect = async () => {
+    setGithubError("");
+    setGithubStep("code");
+    try {
+      const flow = await githubStartDeviceFlow();
+      setGithubUserCode(flow.user_code);
+      openExternalUrl(flow.verification_uri);
+
+      const result = await githubPollToken(flow.device_code, flow.interval, flow.expires_in);
+      setGithubStatus(result);
+      setGithubStep("idle");
+    } catch (e: any) {
+      setGithubError(String(e));
+      setGithubStep("idle");
+    }
+  };
+
+  const copyGithubCode = () => {
+    navigator.clipboard.writeText(githubUserCode);
+    setGithubCopied(true);
+    setTimeout(() => setGithubCopied(false), 2000);
+  };
+
   if (widgetMode) {
     return <UnlockWidget />;
   }
@@ -83,6 +114,89 @@ export default function App() {
   }
 
   if (!vaultStatus.initialized) {
+    const showGithubPrompt = !showSkipGithub && githubStatus !== null && !githubStatus.connected;
+    
+    if (showGithubPrompt) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
+          <div className="w-full max-w-md">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-11 h-11 rounded-xl grid place-items-center glow-cyan" style={{ background: "var(--gradient-brand)" }}>
+                <Shield className="w-6 h-6 text-primary-foreground" strokeWidth={2.5} />
+              </div>
+              <div>
+                <div className="text-lg font-semibold tracking-tight">OmniLock</div>
+                <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="text-[11px] uppercase tracking-widest text-[color:var(--primary)] mb-2">Step 1 of 3</div>
+              <h2 className="text-3xl font-semibold tracking-tight">Connect GitHub</h2>
+              <p className="text-sm text-[color:var(--muted-foreground)] mt-2">
+                Link your GitHub account to backup and restore your vault across computers. Your data is encrypted end-to-end.
+              </p>
+            </div>
+
+            {githubError && (
+              <div className="mb-4 p-3 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-sm text-[color:var(--destructive)]">
+                {githubError}
+              </div>
+            )}
+
+            <div className="glass rounded-2xl p-6 space-y-4">
+              {githubStep === "code" ? (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-lg bg-white/[0.04] border border-white/10 text-center">
+                    <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)] mb-2">
+                      Enter this code on GitHub
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <span className="text-3xl font-mono font-bold tracking-wider text-[color:var(--primary)]">
+                        {githubUserCode}
+                      </span>
+                      <button onClick={copyGithubCode}
+                              className="p-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] transition-colors">
+                        {githubCopied ? (
+                          <span className="text-[color:var(--success)] text-xs">Copied!</span>
+                        ) : (
+                          <span className="text-xs text-[color:var(--muted-foreground)]">Copy</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 text-sm text-[color:var(--muted-foreground)]">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Waiting for authorization...
+                  </div>
+                  <button onClick={() => { setGithubStep("idle"); setGithubError(""); }}
+                          className="w-full text-center text-sm text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button onClick={handleGitHubConnect}
+                        className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] glow-cyan"
+                        style={{ background: "var(--gradient-brand)" }}>
+                  <Github className="w-5 h-5" />
+                  Connect with GitHub
+                </button>
+              )}
+            </div>
+
+            <button onClick={() => setShowSkipGithub(true)}
+                    className="mt-4 w-full text-center text-sm text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]">
+              Skip for now
+            </button>
+
+            <div className="mt-6 text-center text-[11px] text-[color:var(--muted-foreground)]">
+              Uses GitHub Device Flow. No password shared with OmniLock.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return <SetupWizard onComplete={handleUnlock} />;
   }
 

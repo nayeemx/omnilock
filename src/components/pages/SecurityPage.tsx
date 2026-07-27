@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   QrCode, KeyRound, Copy, ArrowRight, CheckCircle2,
   AlertTriangle, Power, Activity, ShieldAlert, Download,
-  Usb,
+  Usb, Github, Cloud,
 } from "lucide-react";
 import {
   generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock,
@@ -11,6 +11,7 @@ import {
   type VaultConfigDto, type UsbDriveInfo,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
+import { GitHubConnect } from "../auth/GitHubConnect";
 
 type TwoFaState = "idle" | "setup" | "enabled";
 
@@ -447,6 +448,23 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             )}
           </div>
         )}
+      </div>
+
+      <div className="glass rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Cloud className="w-5 h-5 text-[color:var(--primary)]" />
+          <h3 className="font-semibold">Cloud Sync</h3>
+          {config?.cloud_sync_enabled ? (
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Active</span>
+          ) : (
+            <span className="ml-auto text-xs px-2 py-1 rounded-full bg-white/[0.04] text-[color:var(--muted-foreground)] border border-white/10">Not connected</span>
+          )}
+        </div>
+        <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+          Backup your encrypted vault to GitHub Gists. Restore your settings on any computer by connecting your GitHub account.
+          Your vault is encrypted end-to-end with your master password - GitHub never sees your data.
+        </p>
+        <GitHubConnect onStatusChange={() => refresh()} />
       </div>
 
       <div className="glass rounded-2xl p-6">

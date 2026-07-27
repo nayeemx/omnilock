@@ -1,9 +1,14 @@
 use std::process::Command;
-use crate::file_locker;
+use std::path::Path;
+
+// ACL enforcement is handled by the Windows service via named pipe.
+// These functions only handle the NoDrives registry visibility toggle.
 
 pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
     let root = format!("{}:\\", drive_letter);
-    file_locker::lock_file(&root)?;
+    if !Path::new(&root).exists() {
+        return Err(format!("Drive {} does not exist", drive_letter));
+    }
 
     let reg_cmd = format!(
         r"reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /t REG_DWORD /d {} /f",
@@ -20,7 +25,9 @@ pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
 
 pub fn unlock_drive(drive_letter: &str, remaining_locked: &[String]) -> Result<(), String> {
     let root = format!("{}:\\", drive_letter);
-    file_locker::unlock_file(&root)?;
+    if !Path::new(&root).exists() {
+        return Err(format!("Drive {} does not exist", drive_letter));
+    }
 
     if remaining_locked.is_empty() {
         let reg_cmd = r"reg delete HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /f";

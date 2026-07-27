@@ -15,7 +15,7 @@ pub fn kill_process_by_name(name: &str) -> Result<(), String> {
                     0,
                     pid.as_u32(),
                 );
-                if handle != 0 {
+                if handle != std::ptr::null_mut() {
                     windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
                     windows_sys::Win32::Foundation::CloseHandle(handle);
                 }

@@ -52,61 +52,65 @@ pub fn start_process_monitor(app_handle: tauri::AppHandle) {
         while MONITOR_RUNNING.load(Ordering::SeqCst) {
             let apps = locked_apps_store().lock().map(|g| g.clone()).unwrap_or_default();
 
-            if !apps.is_empty() {
-                let mut sys = System::new_all();
-                sys.refresh_processes();
+            if apps.is_empty() {
+                // No locked apps — sleep longer to save CPU
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                continue;
+            }
 
-                for app in &apps {
-                    if !app.enabled {
-                        continue;
-                    }
+            let mut sys = System::new_all();
+            sys.refresh_processes();
 
-                    for (pid, process) in sys.processes() {
-                        let process_path = process.exe()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        let process_name = process.name().to_string();
+            for app in &apps {
+                if !app.enabled {
+                    continue;
+                }
 
-                        let matches = process_path.eq_ignore_ascii_case(&app.path)
-                            || process_name.eq_ignore_ascii_case(&app.name);
+                for (pid, process) in sys.processes() {
+                    let process_path = process.exe()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let process_name = process.name().to_string();
 
-                        if matches {
-                            if !app.sha256.is_empty() {
-                                let current_hash = compute_file_sha256(&process_path)
-                                    .unwrap_or_default();
-                                if !current_hash.is_empty() && current_hash != app.sha256 {
-                                    continue;
-                                }
+                    let matches = process_path.eq_ignore_ascii_case(&app.path)
+                        || process_name.eq_ignore_ascii_case(&app.name);
+
+                    if matches {
+                        if !app.sha256.is_empty() {
+                            let current_hash = compute_file_sha256(&process_path)
+                                .unwrap_or_default();
+                            if !current_hash.is_empty() && current_hash != app.sha256 {
+                                continue;
                             }
-
-                            unsafe {
-                                let handle = OpenProcess(PROCESS_TERMINATE, 0, pid.as_u32());
-                                if handle != 0 {
-                                    TerminateProcess(handle, 1);
-                                    windows_sys::Win32::Foundation::CloseHandle(handle);
-                                }
-                            }
-
-                            let target = UnlockTarget {
-                                target_type: "app".to_string(),
-                                target_id: app.path.clone(),
-                                display_name: app.name.clone(),
-                            };
-
-                            if let Ok(mut guard) = crate::UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock() {
-                                *guard = Some(target.clone());
-                            }
-
-                            let _ = app_handle.emit("app-blocked", &target);
-
-                            if let Some(widget) = app_handle.get_webview_window("widget") {
-                                let _ = widget.show();
-                                let _ = widget.set_focus();
-                                let _ = widget.emit("unlock-target", &target);
-                            }
-
-                            break;
                         }
+
+                        unsafe {
+                            let handle = OpenProcess(PROCESS_TERMINATE, 0, pid.as_u32());
+                            if handle != std::ptr::null_mut() {
+                                TerminateProcess(handle, 1);
+                                windows_sys::Win32::Foundation::CloseHandle(handle);
+                            }
+                        }
+
+                        let target = UnlockTarget {
+                            target_type: "app".to_string(),
+                            target_id: app.path.clone(),
+                            display_name: app.name.clone(),
+                        };
+
+                        if let Ok(mut guard) = crate::UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock() {
+                            *guard = Some(target.clone());
+                        }
+
+                        let _ = app_handle.emit("app-blocked", &target);
+
+                        if let Some(widget) = app_handle.get_webview_window("widget") {
+                            let _ = widget.show();
+                            let _ = widget.set_focus();
+                            let _ = widget.emit("unlock-target", &target);
+                        }
+
+                        break;
                     }
                 }
             }

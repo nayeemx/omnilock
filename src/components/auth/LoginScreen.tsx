@@ -2,11 +2,12 @@ import { useState } from "react";
 import {
   Shield, ShieldCheck, Fingerprint, Activity,
   Lock, Eye, EyeOff, ArrowRight, CheckCircle2, HelpCircle, KeyRound,
-  Usb, FileKey,
+  Usb, FileKey, Github, Cloud,
 } from "lucide-react";
 import {
   unlockSession, getSecurityQuestion, resetPassword,
   recoverWithKey, recoverWithUsbKey,
+  githubStartDeviceFlow, githubPollToken, openExternalUrl,
 } from "../../lib/tauri-bridge";
 import { Field } from "../shared/Field";
 
@@ -18,6 +19,11 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubStep, setGithubStep] = useState<"idle" | "code" | "polling">("idle");
+  const [githubUserCode, setGithubUserCode] = useState("");
+  const [githubCopied, setGithubCopied] = useState(false);
 
   const [resetMode, setResetMode] = useState<ResetMode | null>(null);
   const [resetQuestion, setResetQuestion] = useState("");
@@ -147,6 +153,34 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
   const handleResetBackToLogin = () => {
     handleResetCancel();
     setPassword("");
+  };
+
+  const handleGitHubLogin = async () => {
+    setGithubLoading(true);
+    setError("");
+    try {
+      const flow = await githubStartDeviceFlow();
+      setGithubUserCode(flow.user_code);
+      setGithubStep("code");
+      openExternalUrl(flow.verification_uri);
+
+      const result = await githubPollToken(flow.device_code, flow.interval, flow.expires_in);
+      if (result.connected) {
+        setGithubStep("idle");
+        await onUnlock();
+      }
+    } catch (e: any) {
+      setError(String(e));
+      setGithubStep("idle");
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
+  const copyGithubCode = () => {
+    navigator.clipboard.writeText(githubUserCode);
+    setGithubCopied(true);
+    setTimeout(() => setGithubCopied(false), 2000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -410,6 +444,46 @@ export function LoginScreen({ totpEnabled, onUnlock }: { totpEnabled: boolean; o
                   Forgot password?
                 </button>
               </div>
+
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-[11px]">
+                  <span className="px-3 text-[color:var(--muted-foreground)]" style={{ background: "var(--background)" }}>or</span>
+                </div>
+              </div>
+
+              {githubStep === "code" ? (
+                <div className="glass rounded-2xl p-6 space-y-4">
+                  <div className="text-center">
+                    <div className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)] mb-2">
+                      Enter this code on GitHub
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-2xl font-mono font-bold tracking-wider text-[color:var(--primary)]">
+                        {githubUserCode}
+                      </span>
+                      <button onClick={copyGithubCode} className="p-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1]">
+                        {githubCopied ? <CheckCircle2 className="w-4 h-4 text-[color:var(--success)]" /> : <Cloud className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="text-center text-[11px] text-[color:var(--muted-foreground)]">
+                    Waiting for authorization...
+                  </div>
+                  <button onClick={() => { setGithubStep("idle"); setGithubLoading(false); }}
+                          className="w-full text-center text-[11px] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button onClick={handleGitHubLogin} disabled={githubLoading}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors disabled:opacity-40">
+                  <Github className="w-4 h-4" />
+                  {githubLoading ? "Connecting..." : "Connect with GitHub"}
+                </button>
+              )}
 
               <div className="mt-6 text-center text-[11px] text-[color:var(--muted-foreground)]">
                 Protected by Argon2id · AES-256-GCM · TOTP RFC 6238
