@@ -1,0 +1,11 @@
+{
+  "pub_date": "2026-07-28T06:00:00Z",
+  "version": "v0.1.6",
+  "notes": "Bug fixes: Widget close button, GitHub Connect now shows connected after auth, App Locker search fixed, Vault search added, Dashboard weather + system monitor.",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.6/OmniLock_0.1.6_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2QrQStZY2hXT2NzMEtCZDcvcGF2dExXNnAxa2ZFM2R2UGtpdlFvb3M2ODJJYlovNGxTeEIwQzhJSVUvYlREM3NNem9IK2xvcGRjNXFKOFFaSXVxZGdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTg0MzkxCWZpbGU6T21uaUxvY2tfMC4xLjZfeDY0LXNldHVwLmV4ZQpSMFVhZlJqREtHQkZFOTlOYW1XWkp1TUlsV3pxdDFyMTJqcFhrOEhxZFhMY2NtMG5MYVNVTDJmQTJ6UnF2TjFjR3RLa0tqWkVjMEhkdWxIUG9FWGpDUT09Cg=="
+    }
+  }
+}
