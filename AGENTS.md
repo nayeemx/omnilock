@@ -17,7 +17,7 @@
 
 2. **Light theme** (v0.1.1) — System `prefers-color-scheme` auto-detection, light oklch CSS variables, semantic `surface` tokens replacing hardcoded `bg-white/[0.04]`, light scrollbars.
 
-3. **Auto-updater signature fix** — `latest.json` now has real Ed25519 signature for v0.1.2 (was broken by placeholder). Signing keys are in `signing-keys/` folder.
+3. **Auto-updater signature fix** — `latest.json` has correct Ed25519 signature for v0.1.2. Signing key recovered and backed up.
 
 ---
 
@@ -42,7 +42,7 @@
 | Unlock widget popup | Never tested end-to-end |
 | UI-level lock/unlock | Never tested from app GUI (only via pipe) |
 | Reinstall persistence | Never tested |
-| Auto-updater signature | `latest.json` has placeholder signature, needs `TAURI_SIGNING_PRIVATE_KEY` |
+| Auto-updater signature | ✅ | `latest.json` has correct Ed25519 signature |
 
 ---
 
@@ -80,6 +80,35 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
 cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
 # Then paste the printed signature into latest.json
 ```
+
+---
+
+## ⚠️ AUTO-UPDATER SIGNING KEY (CRITICAL)
+
+**The signing key MUST match the public key embedded in the installed binary.** If you lose or rotate this key, all existing users cannot auto-update.
+
+| Field | Value |
+|-------|-------|
+| **Public key ID** | `EDE58385BDE79B6F` |
+| **Public key (base64)** | `RWRvm+e9hYPl7eUOcS2Q3cknhhVt06dE6IRPrbFNNE/CqnEDdfYs12Wy` |
+| **Private key file** | `src-tauri/update.key` |
+| **Backup copy** | `signing-keys/update-v0.1.0.key` |
+| **Password** | `omnilock2026` |
+| **tauri.conf.json** | `pubkey = "EDE58385BDE79B6F"` |
+
+### DO NOT:
+- Generate a new key pair (breaks update for all installed users)
+- Overwrite `src-tauri/update.key` with a different key
+- Change the pubkey in `tauri.conf.json` unless you rotate keys intentionally
+
+### To sign a new release:
+```powershell
+$key = Get-Content -Raw "src-tauri\update.key"
+$env:TAURI_SIGNING_PRIVATE_KEY = $key
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
+cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
+```
+Copy the printed signature into `latest.json` → `platforms.windows-x86_64.signature`.
 
 ---
 
