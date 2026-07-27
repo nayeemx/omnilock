@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Cloud, Droplets, Wind, Thermometer, Loader2,
-  Shield, Lock, FolderLock, LayoutGrid,
+  Shield, Lock, FolderLock, LayoutGrid, Search,
 } from "lucide-react";
 import { getWeather, getSystemStats, type WeatherData, type SystemStats } from "../../lib/tauri-bridge";
 import { type VaultConfigDto } from "../../lib/tauri-bridge";
@@ -23,11 +23,30 @@ export function DashboardPage({ config }: { config: VaultConfigDto | null; refre
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+
+  const fetchWeather = useCallback((loc?: string) => {
+    setLoadingWeather(true);
+    getWeather(loc)
+      .then(w => { setWeather(w); setLoadingWeather(false); })
+      .catch(() => setLoadingWeather(false));
+  }, []);
 
   useEffect(() => {
-    getWeather().then(w => { setWeather(w); setLoadingWeather(false); }).catch(() => setLoadingWeather(false));
+    fetchWeather();
     getSystemStats().then(s => { setStats(s); setLoadingStats(false); }).catch(() => setLoadingStats(false));
-  }, []);
+  }, [fetchWeather]);
+
+  const handleLocationSearch = () => {
+    if (!locationQuery.trim()) {
+      fetchWeather();
+    } else {
+      setSearching(true);
+      fetchWeather(locationQuery.trim());
+      setSearching(false);
+    }
+  };
 
   const lockedCount = config
     ? config.locked_apps.filter(a => a.enabled).length + config.locked_files.length + config.locked_folders.length + config.locked_drives.length
@@ -41,9 +60,29 @@ export function DashboardPage({ config }: { config: VaultConfigDto | null; refre
       </div>
 
       <div className="glass rounded-2xl p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Cloud className="w-5 h-5 text-[color:var(--primary)]" />
-          <span className="text-sm font-medium">Weather</span>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Cloud className="w-5 h-5 text-[color:var(--primary)]" />
+            <span className="text-sm font-medium">Weather</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <input
+                type="text"
+                value={locationQuery}
+                onChange={e => setLocationQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLocationSearch()}
+                placeholder="Search city..."
+                className="w-40 px-3 py-1.5 text-xs rounded-lg bg-surface border border-surface-border focus:border-[color:var(--primary)] focus:outline-none text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)]"
+              />
+            </div>
+            <button
+              onClick={handleLocationSearch}
+              className="p-1.5 rounded-lg bg-surface border border-surface-border hover:bg-surface-hover transition-colors"
+            >
+              <Search className="w-3.5 h-3.5 text-[color:var(--muted-foreground)]" />
+            </button>
+          </div>
         </div>
         {loadingWeather ? (
           <div className="flex items-center justify-center h-24">

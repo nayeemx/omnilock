@@ -372,6 +372,6 @@ export async function getSystemStats(): Promise<SystemStats> {
   return invoke("cmd_get_system_stats");
 }
 
-export async function getWeather(): Promise<WeatherData> {
-  return invoke("cmd_get_weather");
+export async function getWeather(location?: string): Promise<WeatherData> {
+  return invoke("cmd_get_weather", { location: location ?? null });
 }

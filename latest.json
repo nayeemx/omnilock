@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T07:30:00Z",
-  "version": "v0.0.16",
-  "notes": "Fixed: System Monitor and Dashboard no longer freeze the UI. GPU info queried once (no more PowerShell flashes). All system stats run on background thread.",
+  "pub_date": "2026-07-28T08:00:00Z",
+  "version": "v0.0.17",
+  "notes": "Weather search: type any city name to see weather for that location. Auto-detect still works by default.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.16/OmniLock_0.0.16_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2JBSU5JRGR6clRDanBBZ2NrUXRFR3RuR0tpTks4SFJaYVhTczdiVWRTMHVBdmh5NzhLSGJlMURwSU9WVjhqMzY4QnQwODhSaVU2enA5Sk9jRUxkVGdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTkwMDAyCWZpbGU6T21uaUxvY2tfMC4wLjE2X3g2NC1zZXR1cC5leGUKTVhsUWR3TUV6dmhiODY4aitmR3Y1ald2UjFxSi9NbEMzcjhTZXA3WTRvUGpXaHdkeXVmL0k2TEdYMTNmYURpaHduT29sWWkzNm12UHhHZGlnUE9GRFE9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.17/OmniLock_0.0.17_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1FoMnUvUktvbkhtWGtjR3U2b0ZCcFNubkp5QTdWQm8rbjQvVWEyYXk1NC8wcjJBenV4TEEwT2dpSUVvNlYybks3WW9IdElxQlhBeWhaUmp4SkN3SkFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTkxMTczCWZpbGU6T21uaUxvY2tfMC4wLjE3X3g2NC1zZXR1cC5leGUKRnBTdCsyTFRLcTBUREsyV2orTkFaOGc0WWJCeWJ4YWxXM0NPcnBVRzh4WHN3b0tpQms0RHRxS0tsMkhSODNDV3poSGxleVFsUytZcGFsVW1GbjhFQnc9PQo="
     }
   }
 }

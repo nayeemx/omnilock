@@ -193,14 +193,19 @@ fn query_gpu_once() -> CachedGpu {
     CachedGpu { name: "Unknown GPU".to_string(), vram_mb: 0 }
 }
 
-pub async fn get_weather() -> Result<WeatherData, String> {
+pub async fn get_weather(location: Option<String>) -> Result<WeatherData, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    let url = match &location {
+        Some(loc) if !loc.trim().is_empty() => format!("https://wttr.in/{}?format=j1", loc.trim()),
+        _ => "https://wttr.in/?format=j1".to_string(),
+    };
+
     let resp = client
-        .get("https://wttr.in/?format=j1")
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("Weather request failed: {}", e))?;

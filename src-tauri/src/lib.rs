@@ -941,8 +941,8 @@ async fn cmd_get_system_stats() -> system_monitor::SystemStats {
 }
 
 #[tauri::command]
-async fn cmd_get_weather() -> Result<system_monitor::WeatherData, String> {
-    system_monitor::get_weather().await
+async fn cmd_get_weather(location: Option<String>) -> Result<system_monitor::WeatherData, String> {
+    system_monitor::get_weather(location).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
