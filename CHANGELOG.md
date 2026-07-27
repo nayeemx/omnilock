@@ -4,6 +4,13 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.1.2] - 2026-07-27
+
+### Fixed
+- App logo now uses `icon.png` everywhere (dashboard, login, setup, widget) — taskbar and UI icon are now consistent
+
+---
+
 ## [0.1.1] - 2026-07-27
 
 ### Added

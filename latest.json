@@ -1,10 +1,10 @@
 {
   "pub_date": "2026-07-27T23:59:59Z",
-  "version": "v0.1.1",
-  "notes": "Light theme with system preference detection. Semantic surface tokens replace hardcoded dark-mode values. Better GitHub OAuth error handling.",
+  "version": "v0.1.2",
+  "notes": "App logo consistency fix — taskbar and dashboard now use the same icon.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.1/OmniLock_0.1.1_x64-setup.exe",
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.1.2/OmniLock_0.1.2_x64-setup.exe",
       "signature": "PLACEHOLDER_SIGNATURE_RUN_TAURI_SIGN"
     }
   }
