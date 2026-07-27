@@ -1,6 +1,8 @@
 use sysinfo::{System, Networks};
 use serde::Serialize;
 use std::process::Command;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 #[derive(Serialize, Clone)]
 pub struct SystemStats {
@@ -32,134 +34,173 @@ pub struct WeatherData {
     pub icon: String,
 }
 
-static mut PREV_NET_SENT: u64 = 0;
-static mut PREV_NET_RECV: u64 = 0;
-static mut LAST_NET_TIME: Option<std::time::Instant> = None;
-
-pub fn get_system_stats() -> SystemStats {
-    let mut sys = System::new_all();
-    sys.refresh_cpu();
-    sys.refresh_memory();
-
-    let cpus = sys.cpus();
-    let cpu_usage = if cpus.is_empty() {
-        0.0
-    } else {
-        cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32
-    };
-    let cpu_cores = cpus.len();
-    let cpu_name = cpus.first()
-        .map(|c| c.brand().to_string())
-        .unwrap_or_else(|| "Unknown CPU".to_string());
-
-    let ram_total = sys.total_memory() / 1024 / 1024;
-    let ram_used = sys.used_memory() / 1024 / 1024;
-    let ram_pct = if ram_total > 0 { (ram_used as f32 / ram_total as f32) * 100.0 } else { 0.0 };
-
-    let (gpu_name, gpu_vram, gpu_usage) = get_gpu_info();
-
-    let (sent, recv, sent_rate, recv_rate) = get_network_stats();
-
-    SystemStats {
-        cpu_usage,
-        cpu_cores,
-        cpu_name,
-        ram_total_mb: ram_total,
-        ram_used_mb: ram_used,
-        ram_usage_pct: ram_pct,
-        gpu_name,
-        gpu_vram_mb: gpu_vram,
-        gpu_usage_pct: gpu_usage,
-        net_sent_mb: sent,
-        net_recv_mb: recv,
-        net_sent_rate: sent_rate,
-        net_recv_rate: recv_rate,
-        uptime_secs: System::uptime(),
-    }
+struct CachedGpu {
+    name: String,
+    vram_mb: u64,
 }
 
-fn get_gpu_info() -> (String, u64, f32) {
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command",
-            "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json"])
-        .output();
+struct MonitorState {
+    sys: System,
+    networks: Networks,
+    prev_net_sent: u64,
+    prev_net_recv: u64,
+    last_net_time: Option<Instant>,
+}
 
-    match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            let trimmed = stdout.trim();
+static GPU_CACHE: OnceLock<CachedGpu> = OnceLock::new();
+static MONITOR_STATE: OnceLock<Arc<Mutex<MonitorState>>> = OnceLock::new();
 
-            if trimmed.starts_with('[') {
-                if let Ok(arr) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                    if let Some(first) = arr.get(0) {
-                        return extract_gpu_from_value(first);
-                    }
-                }
-            } else if trimmed.starts_with('{') {
-                if let Ok(obj) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                    return extract_gpu_from_value(&obj);
-                }
-            }
+fn get_state() -> &'static Arc<Mutex<MonitorState>> {
+    MONITOR_STATE.get_or_init(|| {
+        let mut sys = System::new_all();
+        sys.refresh_cpu();
+        sys.refresh_memory();
+        let networks = Networks::new_with_refreshed_list();
+        Arc::new(Mutex::new(MonitorState {
+            sys,
+            networks,
+            prev_net_sent: 0,
+            prev_net_recv: 0,
+            last_net_time: None,
+        }))
+    })
+}
+
+pub async fn get_system_stats_async() -> SystemStats {
+    let state = get_state().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut state = state.lock().unwrap();
+
+        state.sys.refresh_cpu();
+        state.sys.refresh_memory();
+
+        let cpus = state.sys.cpus();
+        let cpu_usage = if cpus.is_empty() {
+            0.0
+        } else {
+            cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32
+        };
+        let cpu_cores = cpus.len();
+        let cpu_name = cpus.first()
+            .map(|c| c.brand().to_string())
+            .unwrap_or_else(|| "Unknown CPU".to_string());
+
+        let ram_total = state.sys.total_memory() / 1024 / 1024;
+        let ram_used = state.sys.used_memory() / 1024 / 1024;
+        let ram_pct = if ram_total > 0 { (ram_used as f32 / ram_total as f32) * 100.0 } else { 0.0 };
+
+        let gpu = GPU_CACHE.get_or_init(|| query_gpu_once());
+
+        state.networks.refresh();
+        let mut total_sent: u64 = 0;
+        let mut total_recv: u64 = 0;
+        for (_name, data) in &state.networks {
+            total_sent += data.total_transmitted();
+            total_recv += data.total_received();
         }
-        Err(_) => {}
-    }
-    ("Unknown GPU".to_string(), 0, 0.0)
-}
 
-fn extract_gpu_from_value(v: &serde_json::Value) -> (String, u64, f32) {
-    let name = v.get("Name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("Unknown GPU")
-        .to_string();
-    let vram = v.get("AdapterRAM")
-        .and_then(|r| r.as_u64())
-        .unwrap_or(0) / 1024 / 1024;
-    (name, vram, 0.0)
-}
+        let sent_mb = total_sent as f64 / 1024.0 / 1024.0;
+        let recv_mb = total_recv as f64 / 1024.0 / 1024.0;
 
-fn get_network_stats() -> (f64, f64, f64, f64) {
-    let networks = Networks::new_with_refreshed_list();
-
-    let mut total_sent: u64 = 0;
-    let mut total_recv: u64 = 0;
-    for (_name, data) in &networks {
-        total_sent += data.total_transmitted();
-        total_recv += data.total_received();
-    }
-
-    let sent_mb = total_sent as f64 / 1024.0 / 1024.0;
-    let recv_mb = total_recv as f64 / 1024.0 / 1024.0;
-
-    let now = std::time::Instant::now();
-    let (sent_rate, recv_rate) = unsafe {
-        if let Some(last) = LAST_NET_TIME {
+        let now = Instant::now();
+        let (sent_rate, recv_rate) = if let Some(last) = state.last_net_time {
             let elapsed = now.duration_since(last).as_secs_f64();
             if elapsed > 0.0 {
-                let ds = total_sent.saturating_sub(PREV_NET_SENT);
-                let dr = total_recv.saturating_sub(PREV_NET_RECV);
-                PREV_NET_SENT = total_sent;
-                PREV_NET_RECV = total_recv;
-                LAST_NET_TIME = Some(now);
+                let ds = total_sent.saturating_sub(state.prev_net_sent);
+                let dr = total_recv.saturating_sub(state.prev_net_recv);
+                state.prev_net_sent = total_sent;
+                state.prev_net_recv = total_recv;
+                state.last_net_time = Some(now);
                 (ds as f64 / elapsed / 1024.0, dr as f64 / elapsed / 1024.0)
             } else {
                 (0.0, 0.0)
             }
         } else {
-            PREV_NET_SENT = total_sent;
-            PREV_NET_RECV = total_recv;
-            LAST_NET_TIME = Some(now);
+            state.prev_net_sent = total_sent;
+            state.prev_net_recv = total_recv;
+            state.last_net_time = Some(now);
             (0.0, 0.0)
-        }
-    };
+        };
 
-    (sent_mb, recv_mb, sent_rate, recv_rate)
+        SystemStats {
+            cpu_usage,
+            cpu_cores,
+            cpu_name,
+            ram_total_mb: ram_total,
+            ram_used_mb: ram_used,
+            ram_usage_pct: ram_pct,
+            gpu_name: gpu.name.clone(),
+            gpu_vram_mb: gpu.vram_mb,
+            gpu_usage_pct: 0.0,
+            net_sent_mb: sent_mb,
+            net_recv_mb: recv_mb,
+            net_sent_rate: sent_rate,
+            net_recv_rate: recv_rate,
+            uptime_secs: System::uptime(),
+        }
+    })
+    .await
+    .unwrap_or_else(|e| SystemStats {
+        cpu_usage: 0.0,
+        cpu_cores: 0,
+        cpu_name: format!("Error: {}", e),
+        ram_total_mb: 0,
+        ram_used_mb: 0,
+        ram_usage_pct: 0.0,
+        gpu_name: "Unknown".to_string(),
+        gpu_vram_mb: 0,
+        gpu_usage_pct: 0.0,
+        net_sent_mb: 0.0,
+        net_recv_mb: 0.0,
+        net_sent_rate: 0.0,
+        net_recv_rate: 0.0,
+        uptime_secs: 0,
+    })
+}
+
+fn query_gpu_once() -> CachedGpu {
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Command",
+            "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json"])
+        .output();
+
+    if let Ok(out) = output {
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        let trimmed = stdout.trim();
+
+        let val = if trimmed.starts_with('[') {
+            serde_json::from_str::<serde_json::Value>(trimmed)
+                .ok()
+                .and_then(|arr| arr.get(0).cloned())
+        } else if trimmed.starts_with('{') {
+            serde_json::from_str::<serde_json::Value>(trimmed).ok()
+        } else {
+            None
+        };
+
+        if let Some(v) = val {
+            let name = v.get("Name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("Unknown GPU")
+                .to_string();
+            let vram = v.get("AdapterRAM")
+                .and_then(|r| r.as_u64())
+                .unwrap_or(0) / 1024 / 1024;
+            return CachedGpu { name, vram_mb: vram };
+        }
+    }
+
+    CachedGpu { name: "Unknown GPU".to_string(), vram_mb: 0 }
 }
 
 pub async fn get_weather() -> Result<WeatherData, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
     let resp = client
         .get("https://wttr.in/?format=j1")
-        .timeout(std::time::Duration::from_secs(5))
         .send()
         .await
         .map_err(|e| format!("Weather request failed: {}", e))?;

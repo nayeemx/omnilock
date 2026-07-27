@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T07:00:00Z",
-  "version": "v0.0.15",
-  "notes": "Widget close button, GitHub Connect fix, App Locker search fix, Vault search, System Monitor, Dashboard with weather.",
+  "pub_date": "2026-07-28T07:30:00Z",
+  "version": "v0.0.16",
+  "notes": "Fixed: System Monitor and Dashboard no longer freeze the UI. GPU info queried once (no more PowerShell flashes). All system stats run on background thread.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.15/OmniLock_0.0.15_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1VLK0gwSUhHWmwvVFpaMFlmTnRXOEZ1MlByWUlKY0lGd1hFeGQrZ2ZQN1hFOHlDYnJMdFh0em1ZYmI1U3J5NytWcnlrWnBEbU5teWp1czh3YS9pQ1FFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTg3ODU3CWZpbGU6T21uaUxvY2tfMC4wLjE1X3g2NC1zZXR1cC5leGUKZ1paL05jR2lveWduc0JXUC82WGtoTlcvWFNGbHRRV1VNOTRUL0NLYXZYdEFFc0J6UExUM3dVWEs0ajJwZENwWklrU2hleFMwYXB4KzdPYVovR2RaQWc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.16/OmniLock_0.0.16_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2JBSU5JRGR6clRDanBBZ2NrUXRFR3RuR0tpTks4SFJaYVhTczdiVWRTMHVBdmh5NzhLSGJlMURwSU9WVjhqMzY4QnQwODhSaVU2enA5Sk9jRUxkVGdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTkwMDAyCWZpbGU6T21uaUxvY2tfMC4wLjE2X3g2NC1zZXR1cC5leGUKTVhsUWR3TUV6dmhiODY4aitmR3Y1ald2UjFxSi9NbEMzcjhTZXA3WTRvUGpXaHdkeXVmL0k2TEdYMTNmYURpaHduT29sWWkzNm12UHhHZGlnUE9GRFE9PQo="
     }
   }
 }

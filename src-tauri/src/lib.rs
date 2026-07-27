@@ -936,8 +936,8 @@ fn cmd_open_external_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn cmd_get_system_stats() -> system_monitor::SystemStats {
-    system_monitor::get_system_stats()
+async fn cmd_get_system_stats() -> system_monitor::SystemStats {
+    system_monitor::get_system_stats_async().await
 }
 
 #[tauri::command]

@@ -4,7 +4,7 @@
 
 ## Current State
 
-- **Version**: 0.1.6 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.1.6)
+- **Version**: 0.0.15 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.0.15)
 - **Last Updated**: 2026-07-28
 - **Git**: clean, all changes committed on `main`
 - **Build**: compiles clean (0 Rust errors, 0 TS errors)
@@ -59,7 +59,7 @@
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| Tauri app builds | ✅ | `OmniLock_0.1.6_x64-setup.exe` produced |
+| Tauri app builds | ✅ | `OmniLock_0.0.15_x64-setup.exe` produced |
 | Rust compiles | ✅ | 0 errors |
 | TypeScript compiles | ✅ | 0 errors |
 | Pipe IPC (Lock/Unlock/Status) | ✅ | 7/7 pipe tests passed (session 2026-07-27) |
@@ -182,9 +182,13 @@ omnilock/
 
 ---
 
+## Versioning Scheme
+
+Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
+
 ## Version History
 
-- **0.1.6** — Widget close button, GitHub Connect state fix, App Locker search fix, Vault search
+- **0.0.15** — Versioning reset. Widget close, GitHub Connect fix, App Locker fix, Vault search, System Monitor, Dashboard
 - **0.1.5** — System Monitor (CPU/RAM/GPU/Network graphs) + Dashboard (weather widget, security overview)
 - **0.1.4** — GitHub connect state fix, App Locker search, installed apps scan, lock loaders, file picker, backup/restore
 - **0.1.3** — GitHub Cloud Sync (real OAuth App with Device Flow)
