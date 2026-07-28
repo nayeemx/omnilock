@@ -405,3 +405,41 @@ export async function biometricLogin(): Promise<void> {
 export async function hasBiometricToken(): Promise<boolean> {
   return invoke("cmd_has_biometric_token");
 }
+
+export interface DiagnosticsDto {
+  version: string;
+  log_tail: string;
+  locked_items_check: LockItemCheck[];
+  biometric: BiometricDiagnostic;
+  service: ServiceDiagnostic;
+  drive_states: DriveDiagnostic[];
+}
+
+export interface LockItemCheck {
+  path: string;
+  kind: string;
+  exists: boolean;
+  deny_ace_present: boolean;
+  check_error: string;
+}
+
+export interface BiometricDiagnostic {
+  hardware_available: boolean;
+  token_exists: boolean;
+  token_load_ok: boolean;
+  reason: string;
+  last_error: string;
+}
+
+export interface ServiceDiagnostic {
+  running: boolean;
+}
+
+export interface DriveDiagnostic {
+  drive_letter: string;
+  policy_active: boolean;
+}
+
+export async function getDiagnostics(): Promise<DiagnosticsDto> {
+  return invoke("cmd_get_diagnostics");
+}

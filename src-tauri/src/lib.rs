@@ -17,6 +17,8 @@ pub mod usb_key;
 pub mod service_client;
 pub mod github_sync;
 pub mod system_monitor;
+pub mod logger;
+pub mod diagnostics;
 
 use tauri::State;
 use tauri::Manager;
@@ -215,7 +217,14 @@ fn cmd_add_locked_drive(
     drive_letter: String,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
-    drive_locker::lock_drive(&drive_letter)?;
+    logger::log("DRIVE", &format!("lock_drive: {}", drive_letter));
+    match drive_locker::lock_drive(&drive_letter) {
+        Ok(()) => logger::log("DRIVE", &format!("lock_drive ok: {}", drive_letter)),
+        Err(e) => {
+            logger::log("DRIVE", &format!("lock_drive failed: {} err={}", drive_letter, e));
+            return Err(e);
+        }
+    }
     service_client::notify_lock_drive(&drive_letter);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -235,6 +244,7 @@ fn cmd_remove_locked_drive(
     drive_letter: String,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
+    logger::log("DRIVE", &format!("unlock_drive: {}", drive_letter));
     let remaining = {
         let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_ref().ok_or("Session not unlocked")?;
@@ -243,7 +253,13 @@ fn cmd_remove_locked_drive(
             .cloned()
             .collect::<Vec<_>>()
     };
-    drive_locker::unlock_drive(&drive_letter, &remaining)?;
+    match drive_locker::unlock_drive(&drive_letter, &remaining) {
+        Ok(()) => logger::log("DRIVE", &format!("unlock_drive ok: {}", drive_letter)),
+        Err(e) => {
+            logger::log("DRIVE", &format!("unlock_drive failed: {} err={}", drive_letter, e));
+            return Err(e);
+        }
+    }
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&format!("{}:\\", drive_letter), password);
@@ -260,13 +276,21 @@ fn cmd_add_locked_file(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
-    file_locker::lock_file(&path)?;
+    logger::log("LOCK", &format!("lock_file start: {}", path));
+    match file_locker::lock_file(&path) {
+        Ok(()) => logger::log("LOCK", &format!("lock_file ok: {}", path)),
+        Err(e) => {
+            logger::log("LOCK", &format!("lock_file failed: {} err={}", path, e));
+            return Err(e);
+        }
+    }
     let verified = file_locker::verify_lock(&path).unwrap_or(false);
+    logger::log("LOCK", &format!("lock_file verify={} path={}", verified, path));
     service_client::notify_lock_file(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_files.contains(&path) {
-        config.locked_files.push(path);
+        config.locked_files.push(path.clone());
     }
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
@@ -281,8 +305,16 @@ fn cmd_remove_locked_file(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
-    file_locker::unlock_file(&path)?;
+    logger::log("UNLOCK", &format!("unlock_file start: {}", path));
+    match file_locker::unlock_file(&path) {
+        Ok(()) => logger::log("UNLOCK", &format!("unlock_file ok: {}", path)),
+        Err(e) => {
+            logger::log("UNLOCK", &format!("unlock_file failed: {} err={}", path, e));
+            return Err(e);
+        }
+    }
     let verified = file_locker::verify_lock(&path).unwrap_or(true);
+    logger::log("UNLOCK", &format!("unlock_file verify={} path={}", verified, path));
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&path, password);
@@ -300,13 +332,21 @@ fn cmd_add_locked_folder(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
-    file_locker::lock_folder(&path)?;
+    logger::log("LOCK", &format!("lock_folder start: {}", path));
+    match file_locker::lock_folder(&path) {
+        Ok(()) => logger::log("LOCK", &format!("lock_folder ok: {}", path)),
+        Err(e) => {
+            logger::log("LOCK", &format!("lock_folder failed: {} err={}", path, e));
+            return Err(e);
+        }
+    }
     let verified = file_locker::verify_lock(&path).unwrap_or(false);
+    logger::log("LOCK", &format!("lock_folder verify={} path={}", verified, path));
     service_client::notify_lock_folder(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_folders.contains(&path) {
-        config.locked_folders.push(path);
+        config.locked_folders.push(path.clone());
     }
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
@@ -321,8 +361,16 @@ fn cmd_remove_locked_folder(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
-    file_locker::unlock_folder(&path)?;
+    logger::log("UNLOCK", &format!("unlock_folder start: {}", path));
+    match file_locker::unlock_folder(&path) {
+        Ok(()) => logger::log("UNLOCK", &format!("unlock_folder ok: {}", path)),
+        Err(e) => {
+            logger::log("UNLOCK", &format!("unlock_folder failed: {} err={}", path, e));
+            return Err(e);
+        }
+    }
     let verified = file_locker::verify_lock(&path).unwrap_or(true);
+    logger::log("UNLOCK", &format!("unlock_folder verify={} path={}", verified, path));
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&path, password);
@@ -336,17 +384,27 @@ fn cmd_remove_locked_folder(
 
 #[tauri::command]
 fn cmd_rescue_unlock(path: String) -> Result<String, String> {
+    logger::log("RESCUE", &format!("rescue_unlock start: {}", path));
     if !std::path::Path::new(&path).exists() {
+        logger::log("RESCUE", &format!("rescue_unlock path not found: {}", path));
         return Err(format!("Path does not exist: {}", path));
     }
 
     let has_deny = file_locker::verify_lock(&path).unwrap_or(false);
+    logger::log("RESCUE", &format!("rescue_unlock has_deny={} path={}", has_deny, path));
     if !has_deny {
         return Ok("not_locked".to_string());
     }
 
-    file_locker::unlock_file(&path)?;
+    match file_locker::unlock_file(&path) {
+        Ok(()) => logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", path)),
+        Err(e) => {
+            logger::log("RESCUE", &format!("rescue_unlock unlock failed: {} err={}", path, e));
+            return Err(e);
+        }
+    }
     let still_locked = file_locker::verify_lock(&path).unwrap_or(false);
+    logger::log("RESCUE", &format!("rescue_unlock still_locked={} path={}", still_locked, path));
     if still_locked {
         return Ok("failed".to_string());
     }
@@ -992,7 +1050,14 @@ fn cmd_check_biometric() -> biometric::BiometricStatus {
 
 #[tauri::command]
 async fn cmd_authenticate_biometric(message: String) -> Result<bool, String> {
-    biometric::authenticate_biometric(message).await
+    logger::log("BIOMETRIC", "authenticate start");
+    let result = biometric::authenticate_biometric(message).await;
+    match &result {
+        Ok(true) => logger::log("BIOMETRIC", "authenticate ok"),
+        Ok(false) => logger::log("BIOMETRIC", "authenticate false"),
+        Err(e) => logger::log("BIOMETRIC", &format!("authenticate failed: {}", e)),
+    }
+    result
 }
 
 #[tauri::command]
@@ -1004,10 +1069,18 @@ fn cmd_toggle_biometric(state: State<'_, AppState>, enabled: bool, password: Opt
         guard.as_ref().ok_or("Session not unlocked")?.clone()
     };
 
+    logger::log("BIOMETRIC", &format!("toggle enabled={}", enabled));
     if enabled {
-        biometric::save_biometric_token(&pw).map_err(|e| e.to_string())?;
+        match biometric::save_biometric_token(&pw) {
+            Ok(()) => logger::log("BIOMETRIC", "save_biometric_token ok"),
+            Err(e) => {
+                logger::log("BIOMETRIC", &format!("save_biometric_token failed: {}", e));
+                return Err(e);
+            }
+        }
     } else {
-        biometric::remove_biometric_token().map_err(|e| e.to_string())?;
+        let _ = biometric::remove_biometric_token();
+        logger::log("BIOMETRIC", "remove_biometric_token");
     }
 
     let mut config = vault::decrypt_vault(&pw).map_err(|e| e.to_string())?;
@@ -1020,8 +1093,19 @@ fn cmd_toggle_biometric(state: State<'_, AppState>, enabled: bool, password: Opt
 
 #[tauri::command]
 async fn cmd_biometric_login(state: State<'_, AppState>) -> Result<(), String> {
-    let password = biometric::load_biometric_token().map_err(|e| e.to_string())?;
+    logger::log("BIOMETRIC", "biometric_login start");
+    let password = match biometric::load_biometric_token() {
+        Ok(pw) => {
+            logger::log("BIOMETRIC", "load_biometric_token ok");
+            pw
+        }
+        Err(e) => {
+            logger::log("BIOMETRIC", &format!("load_biometric_token failed: {}", e));
+            return Err(e);
+        }
+    };
     let config = vault::decrypt_vault(&password).map_err(|e| format!("Wrong password: {}", e))?;
+    logger::log("BIOMETRIC", "decrypt_vault ok");
     let session_token = auth::create_session_token().map_err(|e| e.to_string())?;
     {
         let mut token_guard = state.session_token.lock().map_err(|e| e.to_string())?;
@@ -1036,6 +1120,7 @@ async fn cmd_biometric_login(state: State<'_, AppState>) -> Result<(), String> {
         *password_guard = Some(password);
     }
     process_guard::update_locked_apps(config.locked_apps.clone());
+    logger::log("BIOMETRIC", "biometric_login ok");
     Ok(())
 }
 
@@ -1044,8 +1129,15 @@ fn cmd_has_biometric_token() -> bool {
     biometric::has_biometric_token()
 }
 
+#[tauri::command]
+fn cmd_get_diagnostics() -> diagnostics::Diagnostics {
+    diagnostics::collect_diagnostics()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logger::init();
+
     let app_state = AppState {
         session_token: Mutex::new(None),
         vault_config: Mutex::new(None),
@@ -1115,6 +1207,7 @@ pub fn run() {
             cmd_toggle_biometric,
             cmd_biometric_login,
             cmd_has_biometric_token,
+            cmd_get_diagnostics,
         ])
         .setup(|app| {
             #[cfg(desktop)]
