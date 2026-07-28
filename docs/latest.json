@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T10:00:00Z",
-  "version": "v0.0.23",
-  "notes": "Fix unlock: properly removes DENY ACL. UI now shows if unlock succeeded or failed. Weather uses Open-Meteo API for better accuracy.",
+  "pub_date": "2026-07-28T14:50:00Z",
+  "version": "v0.0.25",
+  "notes": "Diagnostics system + operation logger. Biometric fix (powershell51). Build signed correctly.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.23/OmniLock_0.0.23_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1VKV0FDalhQRUtGUUkyblpNNUp6dlJkMUk5UUdndG1IanpzcS9VcktxYlQrTHlsWHVVeFJXdHJvY3ZQZlk0czdhV0dncXlZT2JaSVp5TFhHSjlabFF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjI2MTkzCWZpbGU6T21uaUxvY2tfMC4wLjIzX3g2NC1zZXR1cC5leGUKWURlL1pualdyeVRXVTlZdDZjV1NiZmg5YnQ4R0R5OW9IMlU1SSt6dTZtVlNScUVmUllWZHZYNHBncVNNTGxad3JXM1B4cXNucU8xQWJvZjBPRWdzREE9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.25/OmniLock_0.0.25_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2MxOFRteTliWWdDNnVSNmg2QVFMaElXY0U5U00xYTBwMnFsbVB2YW9wcUFnYXVQY1RvNWhRcjVneVFJRzQwV3EyV243OHhRTk9vR0duTVBLTzFWYkFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjUwMDU0CWZpbGU6T21uaUxvY2tfMC4wLjI1X3g2NC1zZXR1cC5leGUKa1RpNGVJYUdJaGw2NDJqRUtPT2VPanp2ck1wWVlyZlNyNU4yVmdlbEsybFNqQlowQkRvSTE3Tk1reHd4QWhFcllPWXMydkVMQmkwTVlSNU5UbzZ5QWc9PQo="
     }
   }
 }
