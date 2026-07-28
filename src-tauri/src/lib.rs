@@ -335,6 +335,25 @@ fn cmd_remove_locked_folder(
 }
 
 #[tauri::command]
+fn cmd_rescue_unlock(path: String) -> Result<String, String> {
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    let has_deny = file_locker::verify_lock(&path).unwrap_or(false);
+    if !has_deny {
+        return Ok("not_locked".to_string());
+    }
+
+    file_locker::unlock_file(&path)?;
+    let still_locked = file_locker::verify_lock(&path).unwrap_or(false);
+    if still_locked {
+        return Ok("failed".to_string());
+    }
+    Ok("rescued".to_string())
+}
+
+#[tauri::command]
 fn cmd_toggle_locked_app(
     state: State<'_, AppState>,
     name: String,
@@ -1054,6 +1073,7 @@ pub fn run() {
             cmd_toggle_locked_app,
             cmd_add_locked_app,
             cmd_remove_locked_app,
+            cmd_rescue_unlock,
             cmd_generate_totp,
             cmd_generate_totp_qr,
             cmd_enable_2fa,

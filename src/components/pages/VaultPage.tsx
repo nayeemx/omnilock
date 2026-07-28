@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import {
-  HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search,
+  HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search, ShieldAlert,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
   addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile,
-  pickFolder, pickFile,
+  pickFolder, pickFile, rescueUnlock,
   type VaultConfigDto,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -17,6 +17,8 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const [lockingDrive, setLockingDrive] = useState<string | null>(null);
   const [lockingPath, setLockingPath] = useState<string | null>(null);
   const [pathSearch, setPathSearch] = useState("");
+  const [rescueLoading, setRescueLoading] = useState(false);
+  const [rescuePath, setRescuePath] = useState("");
 
   useEffect(() => {
     listDrives().then(setDrives).catch(e => setError("Failed to list drives: " + e));
@@ -106,6 +108,48 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       setError("Failed to unlock path: " + e);
       await refresh();
     }
+  };
+
+  const handleRescuePickFolder = async () => {
+    clearMessages();
+    try {
+      const path = await pickFolder();
+      if (!path) return;
+      setRescuePath(path);
+      setRescueLoading(true);
+      const result = await rescueUnlock(path);
+      if (result === "rescued") {
+        setSuccess(`Rescued! ACL removed: ${path}`);
+      } else if (result === "not_locked") {
+        setSuccess(`Path is not locked: ${path}`);
+      } else {
+        setError(`Rescue failed for ${path}. Try running as Administrator.`);
+      }
+    } catch (e: any) {
+      setError("Rescue failed: " + e);
+    }
+    setRescueLoading(false);
+  };
+
+  const handleRescuePickFile = async () => {
+    clearMessages();
+    try {
+      const path = await pickFile();
+      if (!path) return;
+      setRescuePath(path);
+      setRescueLoading(true);
+      const result = await rescueUnlock(path);
+      if (result === "rescued") {
+        setSuccess(`Rescued! ACL removed: ${path}`);
+      } else if (result === "not_locked") {
+        setSuccess(`Path is not locked: ${path}`);
+      } else {
+        setError(`Rescue failed for ${path}. Try running as Administrator.`);
+      }
+    } catch (e: any) {
+      setError("Rescue failed: " + e);
+    }
+    setRescueLoading(false);
   };
 
   return (
@@ -224,6 +268,32 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               No paths match "{pathSearch}".
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl overflow-hidden border-[color:var(--destructive)]/20">
+        <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
+          <ShieldAlert className="w-5 h-5 text-[color:var(--destructive)]" />
+          <h3 className="font-semibold">Rescue Mode</h3>
+          <span className="text-xs text-[color:var(--muted-foreground)]">Unlock files/folders not in the vault</span>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-[color:var(--muted-foreground)] mb-4">
+            If a file or folder is locked by Windows but no longer appears in the vault (e.g. after reinstall), use this to remove the block. Select the locked item and OmniLock will remove the DENY permission.
+          </p>
+          <div className="flex items-center gap-3">
+            <button onClick={handleRescuePickFolder} disabled={rescueLoading}
+                    className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active disabled:opacity-40">
+              {rescueLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
+              {rescueLoading ? "Rescuing..." : "Select Folder"}
+            </button>
+            <button onClick={handleRescuePickFile} disabled={rescueLoading}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
+                    style={{ background: "var(--gradient-brand)" }}>
+              {rescueLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
+              {rescueLoading ? "Rescuing..." : "Select File"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

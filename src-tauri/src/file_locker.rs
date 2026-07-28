@@ -9,15 +9,49 @@ fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
 }
 
+unsafe fn get_current_dacl(path_w: *const u16) -> Result<(*mut ACL, PSECURITY_DESCRIPTOR), String> {
+    let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+    let ret = GetNamedSecurityInfoW(
+        path_w,
+        SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        &mut sd,
+    );
+    if ret != 0 {
+        return Err(format!("GetNamedSecurityInfo failed: err={}", ret));
+    }
+
+    let mut dacl_present: i32 = 0;
+    let mut dacl: *mut ACL = std::ptr::null_mut();
+    let mut dacl_defaulted: i32 = 0;
+    GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
+
+    if dacl_present == 0 || dacl.is_null() {
+        LocalFree(sd);
+        return Err("No DACL present on object".to_string());
+    }
+
+    Ok((dacl, sd))
+}
+
 fn apply_deny_acl(path: &str) -> Result<(), String> {
     if !Path::new(path).exists() {
         return Err(format!("Path does not exist: {}", path));
     }
 
     unsafe {
+        let path_wide = to_wide(path);
+
+        let (existing_dacl, sd) = get_current_dacl(path_wide.as_ptr())?;
+
         let mut everyone_sid: PSID = std::ptr::null_mut();
         let everyone_sid_str = to_wide("S-1-1-0");
         if ConvertStringSidToSidW(everyone_sid_str.as_ptr(), &mut everyone_sid) == 0 {
+            LocalFree(sd);
             return Err(format!("ConvertStringSidToSid failed: {}", std::io::Error::last_os_error()));
         }
 
@@ -30,13 +64,15 @@ fn apply_deny_acl(path: &str) -> Result<(), String> {
         ea.Trustee.ptstrName = everyone_sid as *mut u16;
 
         let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = SetEntriesInAclW(1, &mut ea, std::ptr::null_mut(), &mut new_dacl);
+        let ret = SetEntriesInAclW(1, &mut ea, existing_dacl, &mut new_dacl);
+
+        LocalFree(everyone_sid as *mut _);
+
         if ret != 0 {
-            LocalFree(everyone_sid as *mut _);
+            LocalFree(sd);
             return Err(format!("SetEntriesInAcl failed: {}", ret));
         }
 
-        let path_wide = to_wide(path);
         let ret = SetNamedSecurityInfoW(
             path_wide.as_ptr(),
             SE_FILE_OBJECT,
@@ -48,7 +84,7 @@ fn apply_deny_acl(path: &str) -> Result<(), String> {
         );
 
         LocalFree(new_dacl as *mut _);
-        LocalFree(everyone_sid as *mut _);
+        LocalFree(sd);
 
         if ret != 0 {
             return Err(format!("SetNamedSecurityInfo failed: err={}", ret));
@@ -63,27 +99,9 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
     }
 
     unsafe {
-        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
         let path_wide = to_wide(path);
 
-        let ret = GetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut sd,
-        );
-        if ret != 0 {
-            return Err(format!("GetNamedSecurityInfo failed: {}", ret));
-        }
-
-        let mut dacl_present: i32 = 0;
-        let mut dacl: *mut ACL = std::ptr::null_mut();
-        let mut dacl_defaulted: i32 = 0;
-        GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
+        let (existing_dacl, sd) = get_current_dacl(path_wide.as_ptr())?;
 
         let mut everyone_sid: PSID = std::ptr::null_mut();
         let everyone_sid_str = to_wide("S-1-1-0");
@@ -92,86 +110,40 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
             return Err(format!("ConvertStringSidToSid failed: {}", std::io::Error::last_os_error()));
         }
 
-        if dacl_present != 0 && !dacl.is_null() {
-            let mut count: u32 = 0;
-            let mut ea_ptr: *mut EXPLICIT_ACCESS_W = std::ptr::null_mut();
-            let ret = GetExplicitEntriesFromAclW(dacl, &mut count, &mut ea_ptr);
-            
-            if ret == 0 && !ea_ptr.is_null() && count > 0 {
-                let mut new_eas: Vec<EXPLICIT_ACCESS_W> = Vec::new();
-                
-                for i in 0..count {
-                    let entry = &*ea_ptr.add(i as usize);
-                    let is_deny = entry.grfAccessMode == DENY_ACCESS;
-                    let is_everyone = if !entry.Trustee.ptstrName.is_null() && entry.Trustee.TrusteeForm == TRUSTEE_IS_SID {
-                        let sid_str = to_wide("S-1-1-0");
-                        let mut test_sid: PSID = std::ptr::null_mut();
-                        if ConvertStringSidToSidW(sid_str.as_ptr(), &mut test_sid) != 0 {
-                            let result = EqualSid(entry.Trustee.ptstrName as PSID, test_sid);
-                            LocalFree(test_sid as *mut _);
-                            result != 0
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-                    
-                    if !(is_deny && is_everyone) {
-                        new_eas.push(*entry);
-                    }
-                }
-                
-                LocalFree(ea_ptr as *mut _);
-                
-                if new_eas.is_empty() {
-                    let ret = SetNamedSecurityInfoW(
-                        path_wide.as_ptr(),
-                        SE_FILE_OBJECT,
-                        DACL_SECURITY_INFORMATION,
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                    );
-                    LocalFree(sd);
-                    LocalFree(everyone_sid as *mut _);
-                    if ret != 0 {
-                        return Err(format!("SetNamedSecurityInfo (clear DACL) failed: {}", ret));
-                    }
-                    return Ok(());
-                }
-                
-                let mut new_dacl: *mut ACL = std::ptr::null_mut();
-                let ret = SetEntriesInAclW(new_eas.len() as u32, new_eas.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl);
-                if ret == 0 {
-                    let ret = SetNamedSecurityInfoW(
-                        path_wide.as_ptr(),
-                        SE_FILE_OBJECT,
-                        DACL_SECURITY_INFORMATION,
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        new_dacl,
-                        std::ptr::null_mut(),
-                    );
-                    LocalFree(new_dacl as *mut _);
-                    if ret != 0 {
-                        LocalFree(sd);
-                        LocalFree(everyone_sid as *mut _);
-                        return Err(format!("SetNamedSecurityInfo (remove) failed: {}", ret));
-                    }
-                } else {
-                    LocalFree(sd);
-                    LocalFree(everyone_sid as *mut _);
-                    return Err(format!("SetEntriesInAcl (remove) failed: {}", ret));
-                }
-            } else {
-                LocalFree(ea_ptr as *mut _);
-            }
+        let mut remove_ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+        remove_ea.grfAccessPermissions = GENERIC_ALL;
+        remove_ea.grfAccessMode = REVOKE_ACCESS;
+        remove_ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+        remove_ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        remove_ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+        remove_ea.Trustee.ptstrName = everyone_sid as *mut u16;
+
+        let mut new_dacl: *mut ACL = std::ptr::null_mut();
+        let ret = SetEntriesInAclW(1, &mut remove_ea, existing_dacl, &mut new_dacl);
+
+        LocalFree(everyone_sid as *mut _);
+
+        if ret != 0 {
+            LocalFree(sd);
+            return Err(format!("SetEntriesInAcl (revoke) failed: {}", ret));
         }
 
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            new_dacl,
+            std::ptr::null_mut(),
+        );
+
+        LocalFree(new_dacl as *mut _);
         LocalFree(sd);
-        LocalFree(everyone_sid as *mut _);
+
+        if ret != 0 {
+            return Err(format!("SetNamedSecurityInfo (revoke) failed: err={}", ret));
+        }
         Ok(())
     }
 }

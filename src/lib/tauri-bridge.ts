@@ -120,6 +120,10 @@ export async function removeLockedApp(name: string): Promise<void> {
   return invoke("cmd_remove_locked_app", { name });
 }
 
+export async function rescueUnlock(path: string): Promise<string> {
+  return invoke("cmd_rescue_unlock", { path });
+}
+
 export async function generateTotpSecret(): Promise<string> {
   return invoke("cmd_generate_totp");
 }

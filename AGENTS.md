@@ -4,10 +4,33 @@
 
 ## Current State
 
-- **Version**: 0.0.15 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.0.15)
+- **Version**: 0.0.23 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.0.23)
 - **Last Updated**: 2026-07-28
 - **Git**: clean, all changes committed on `main`
 - **Build**: compiles clean (0 Rust errors, 0 TS errors)
+
+---
+
+## What Was Just Done (v0.0.22 → v0.0.23)
+
+1. **Fix unlock ACL removal** — Replaced broken `REVOKE_ACCESS` with proper DACL filtering. Now reads existing ACEs, filters out DENY ACEs for Everyone, rebuilds DACL without them.
+2. **Unlock verification** — Unlock commands now return "unlocked" or "unlock_failed". UI shows error if ACL still present after unlock.
+3. **Open-Meteo weather API** — Replaced wttr.in with Open-Meteo for better accuracy. Uses WMO weather codes, IP geolocation fallback, proper geocoding for city names.
+
+---
+
+## What Was Just Done (v0.0.21 → v0.0.22)
+
+1. **Lock verification** — Added `verify_lock()` that reads DACL back and checks for DENY ACE. Lock commands return "locked" or "locked_unverified".
+2. **VaultPage verification UI** — Shows "locked & verified" or "locked_unverified (may require admin)" after locking.
+
+---
+
+## What Was Just Done (v0.0.20 → v0.0.21)
+
+1. **ACL enforcement moved to app** — Replaced broken service pipe with direct Win32 `SetNamedSecurityInfoW` in `file_locker.rs`. Added `apply_deny_acl()` and `remove_deny_acl()`.
+2. **Biometric detection rewritten** — Replaced unreliable WinRT with registry + WbioSrvc service checks.
+3. **Honest audit in AGENTS.md** — Separated "Proven Working" from "Has Code But ZERO Verification".
 
 ---
 
@@ -94,6 +117,8 @@ Every version has followed: write code → claim it works → next session disco
 | Widget unlock doesn't remove ACL | Widget updated vault but never called `notify_unlock_item()` | Added service notification calls in `cmd_widget_unlock` |
 | Service accepts any password | Bare SHA-256 with no salt, no hash file = accept | Vault-based verification (Argon2id + AES-256-GCM) in `service/src/vault.rs` |
 | Race condition on pipe read | `sleep(300ms)` guess | `FlushFileBuffers` + retry loop with 5s timeout |
+| Unlock doesn't remove DENY ACL | `REVOKE_ACCESS` mode doesn't remove DENY ACEs | Filter DACL entries, rebuild without DENY for Everyone |
+| Weather inaccurate | wttr.in API data not accurate for Bangladesh | Switched to Open-Meteo API (ECMWF/NOAA models) |
 
 ---
 
