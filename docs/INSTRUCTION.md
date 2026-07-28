@@ -218,3 +218,9 @@ If Rust check fails, read the error — it will tell you the exact file and line
 ---
 
 *End of INSTRUCTION.md (OmniLock v2.0.0)*
+
+Application nane: OmniLock
+Homepage URL: https://github.com/nayeemx/omilock
+Authorization callback URL: http://localhost
+Check Enable Device Flmq
+Click Register application
