@@ -55,8 +55,12 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       const path = await pickFolder();
       if (!path) return;
       setLockingPath(path);
-      await addLockedFolder(path);
-      setSuccess(`Folder locked: ${path}`);
+      const result = await addLockedFolder(path);
+      if (result === "locked_unverified") {
+        setSuccess(`Folder locked (unverified — may require admin): ${path}`);
+      } else {
+        setSuccess(`Folder locked & verified: ${path}`);
+      }
       await refresh();
     } catch (e: any) {
       setError("Failed to lock folder: " + e);
@@ -70,8 +74,12 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       const path = await pickFile();
       if (!path) return;
       setLockingPath(path);
-      await addLockedFile(path);
-      setSuccess(`File locked: ${path}`);
+      const result = await addLockedFile(path);
+      if (result === "locked_unverified") {
+        setSuccess(`File locked (unverified — may require admin): ${path}`);
+      } else {
+        setSuccess(`File locked & verified: ${path}`);
+      }
       await refresh();
     } catch (e: any) {
       setError("Failed to lock file: " + e);

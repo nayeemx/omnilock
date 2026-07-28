@@ -92,7 +92,7 @@ export async function removeLockedDrive(driveLetter: string): Promise<void> {
   return invoke("cmd_remove_locked_drive", { driveLetter });
 }
 
-export async function addLockedFile(path: string): Promise<void> {
+export async function addLockedFile(path: string): Promise<string> {
   return invoke("cmd_add_locked_file", { path });
 }
 
@@ -100,7 +100,7 @@ export async function removeLockedFile(path: string): Promise<void> {
   return invoke("cmd_remove_locked_file", { path });
 }
 
-export async function addLockedFolder(path: string): Promise<void> {
+export async function addLockedFolder(path: string): Promise<string> {
   return invoke("cmd_add_locked_folder", { path });
 }
 

@@ -258,9 +258,10 @@ fn cmd_remove_locked_drive(
 fn cmd_add_locked_file(
     state: State<'_, AppState>,
     path: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     require_valid_session(&state)?;
     file_locker::lock_file(&path)?;
+    let verified = file_locker::verify_lock(&path).unwrap_or(false);
     service_client::notify_lock_file(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -271,7 +272,7 @@ fn cmd_add_locked_file(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
-    Ok(())
+    if verified { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
 
 #[tauri::command]
@@ -296,9 +297,10 @@ fn cmd_remove_locked_file(
 fn cmd_add_locked_folder(
     state: State<'_, AppState>,
     path: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     require_valid_session(&state)?;
     file_locker::lock_folder(&path)?;
+    let verified = file_locker::verify_lock(&path).unwrap_or(false);
     service_client::notify_lock_folder(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -309,7 +311,7 @@ fn cmd_add_locked_folder(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
-    Ok(())
+    if verified { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
 
 #[tauri::command]

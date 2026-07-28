@@ -148,6 +148,56 @@ pub fn lock_folder(path: &str) -> Result<(), String> {
     apply_deny_acl(path)
 }
 
+pub fn verify_lock(path: &str) -> Result<bool, String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    unsafe {
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let path_wide = to_wide(path);
+
+        let ret = GetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut sd,
+        );
+        if ret != 0 {
+            return Err(format!("GetNamedSecurityInfo failed: {}", ret));
+        }
+
+        let mut dacl_present: i32 = 0;
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let mut dacl_defaulted: i32 = 0;
+        GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
+
+        let mut has_deny = false;
+        if dacl_present != 0 && !dacl.is_null() {
+            let mut count: u32 = 0;
+            let mut ea_ptr: *mut EXPLICIT_ACCESS_W = std::ptr::null_mut();
+            let ret = GetExplicitEntriesFromAclW(dacl, &mut count, &mut ea_ptr);
+            if ret == 0 && !ea_ptr.is_null() {
+                for i in 0..count {
+                    let entry = &*ea_ptr.add(i as usize);
+                    if entry.grfAccessMode == DENY_ACCESS {
+                        has_deny = true;
+                        break;
+                    }
+                }
+                LocalFree(ea_ptr as *mut _);
+            }
+        }
+
+        LocalFree(sd);
+        Ok(has_deny)
+    }
+}
+
 pub fn unlock_folder(path: &str) -> Result<(), String> {
     let dir_path = std::path::Path::new(path);
     if !dir_path.exists() || !dir_path.is_dir() {
