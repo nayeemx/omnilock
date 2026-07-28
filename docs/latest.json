@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T09:10:00Z",
-  "version": "v0.0.20",
-  "notes": "Hidden console windows (no more PowerShell flashes). Direct vault unlock from GUI (no more password re-entry). Logout button. Fixed weather location display. Fixed biometric DPAPI assembly loading.",
+  "pub_date": "2026-07-28T09:30:00Z",
+  "version": "v0.0.21",
+  "notes": "CRITICAL FIX: File/folder locking now applies ACL directly from the app (no longer depends on missing service). Improved biometric detection. Fixed DPAPI assembly loading. Hidden console windows. Direct vault unlock. Logout button.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.20/OmniLock_0.0.20_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1ZzeE44by9WOGQ0Y2RWTG5Fc0lrRE9aemJHNE9MbDBCUi9TZTJZbzVxYk93NWlNcUpjRmVNOG14bzA3K3hwSXhZNjE3ZzhkVElRKzJZUjQ4QldKVVFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjE1MjI4CWZpbGU6T21uaUxvY2tfMC4wLjIwX3g2NC1zZXR1cC5leGUKTmhFQXJ2NjU0dThXMFlWS280WmxHRmg4QkV6SzIwUEhXOVJmcUZES2UxSE5TT3U2QllvNVZrRVJHQXR6Vk9HY01ydkVwMXBoWTljUTcyWDFxY3BCQnc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.21/OmniLock_0.0.21_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2ZraDdydHJRSFhyRmh3c0RMRndlelI4dEcyZit5QVRabjJSNTArdWpuWmVlb2NtY3dYOHo2VVVlTnkyR3hjcUk1WWxKS3hMTk9FM1hVWEFzNjAxMHdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjE3MzU2CWZpbGU6T21uaUxvY2tfMC4wLjIxX3g2NC1zZXR1cC5leGUKa3o1SXVlQXozUnRyS2YrU0FFQkpVZTlzOU1vdEtxUERqbGFCeWJZRHNiUjlnVUkzZy9xSXdZbGQzWm5scG5NaUk0K2h1QWtoNGdzK0FMRVVzTlgyRHc9PQo="
     }
   }
 }
