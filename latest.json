@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T08:30:00Z",
-  "version": "v0.0.18",
-  "notes": "Windows Hello fingerprint login. Enable in Security page, then use fingerprint on login screen.",
+  "pub_date": "2026-07-28T09:00:00Z",
+  "version": "v0.0.19",
+  "notes": "Improved Windows Hello detection. Now checks biometric service and credential provider registry for better hardware compatibility.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.18/OmniLock_0.0.18_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1k3dFJERWE5cVRLcHdTYlM0WkFRSDVtZHlhWWwrcENjYUZlUVpYZkhYVENGYnF3VzdCUHBmTlFHRHhyaU13cGFwei96VFpzK0kremRYWVpDNXhhU3dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MTkzNTA1CWZpbGU6T21uaUxvY2tfMC4wLjE4X3g2NC1zZXR1cC5leGUKWksxRDVMbFhGWDlaclZ6V09ZMWo3S2NzMGg4MStiNjJIby9Zbk9HM3oxbUdLT1RNSDN0WU0wc3ZuS3RTaDdBZU5lNjFvdkhUWCtMT0tnNXd3bkZLRGc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.19/OmniLock_0.0.19_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1ZoQ3BMQ1hCc2ZDQnFKRklFMmVZbktmTzlVTXlGSjI4Qk9ISkFhUFZlTDhlb0w0bWtyUXg2cGREK0k0MSt3SmpBejNYb1ZFeTIvN0NJOEUvajFiZmdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjA1Nzc5CWZpbGU6T21uaUxvY2tfMC4wLjE5X3g2NC1zZXR1cC5leGUKVExOOGp4ZTlnZ2t1cU45UGZNR0R0U0E0NTF6bXAzTzBvakZDbjZpRG51Y0pDc2dldkcwVUdtZEZFQWE4UnJMaEE5bVlRdHRFVlFvbEVIUUthWWdFQWc9PQo="
     }
   }
 }

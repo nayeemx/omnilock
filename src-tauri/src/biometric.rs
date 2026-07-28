@@ -18,28 +18,65 @@ fn biometric_token_path() -> PathBuf {
 pub fn check_biometric_available() -> BiometricStatus {
     let output = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command",
-            "try { $result = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType = WindowsRuntime]::CheckAvailabilityAsync().GetAwaiter().GetResult(); $result.ToString() } catch { 'Unavailable' }"])
+            "$ErrorActionPreference = 'SilentlyContinue'; \
+             Add-Type -AssemblyName System.Runtime.WindowsRuntime; \
+             $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]; \
+             $asTask = $asTaskGeneric.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerifierAvailability]); \
+             $asTask.Invoke($null, @([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync())) | Out-Null; \
+             $result = $asTask.Invoke($null, @([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync())).Result; \
+             $result.ToString()"])
         .output();
 
     match output {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            match stdout.as_str() {
-                "Available" => BiometricStatus { available: true, reason: "Windows Hello is available".to_string() },
-                "DeviceNotPresent" => BiometricStatus { available: false, reason: "No biometric device found".to_string() },
-                "NotConfiguredForUser" => BiometricStatus { available: false, reason: "Windows Hello not set up for this user".to_string() },
-                "DisabledByPolicy" => BiometricStatus { available: false, reason: "Disabled by group policy".to_string() },
-                "DeviceBusy" => BiometricStatus { available: false, reason: "Biometric device is busy".to_string() },
-                _ => BiometricStatus { available: false, reason: format!("Status: {}", stdout) },
+            if stdout.contains("Available") && !stdout.contains("DeviceNotPresent") && !stdout.contains("NotConfigured") {
+                return BiometricStatus { available: true, reason: "Windows Hello is available".to_string() };
             }
         }
-        Err(e) => BiometricStatus { available: false, reason: format!("Failed to check: {}", e) },
+        Err(_) => {}
+    }
+
+    let pin_check = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command",
+            "$ErrorActionPreference = 'SilentlyContinue'; \
+             $kp = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\Credential Providers\\{D6886603-9D4F-4D48-A512-AD2EDE1AC5B1}' -ErrorAction SilentlyContinue; \
+             if ($kp) { 'HasPINProvider' } else { 'NoPINProvider' }"])
+        .output();
+
+    if let Ok(out) = pin_check {
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if stdout.contains("HasPINProvider") {
+            return BiometricStatus { available: true, reason: "Windows Hello credential provider found".to_string() };
+        }
+    }
+
+    let service_check = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command",
+            "Get-Service -Name 'WbioSrvc' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status"])
+        .output();
+
+    match service_check {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if stdout == "Running" {
+                return BiometricStatus { available: true, reason: "Windows Biometric Service is running".to_string() };
+            }
+            BiometricStatus { available: false, reason: format!("Biometric service status: {}. Set up a PIN or fingerprint in Windows Settings > Accounts > Sign-in options.", stdout) }
+        }
+        Err(e) => BiometricStatus { available: false, reason: format!("Failed to check biometric service: {}", e) },
     }
 }
 
 pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
     let script = format!(
-        "try {{ $result = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType = WindowsRuntime]::RequestVerificationAsync('{}').GetAwaiter().GetResult(); $result.ToString() }} catch {{ 'Error: {{}}' }}",
+        "$ErrorActionPreference = 'Stop'; \
+         Add-Type -AssemblyName System.Runtime.WindowsRuntime; \
+         $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' }})[0]; \
+         $asTask = $asTaskGeneric.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerifierResult]); \
+         $op = [Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('{}'); \
+         $result = $asTask.Invoke($null, @($op)).Result; \
+         $result.ToString()",
         message.replace('\'', "''")
     );
 
@@ -61,8 +98,11 @@ pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
         "DisabledByPolicy" => Err("Disabled by group policy".to_string()),
         "DeviceBusy" => Err("Device is busy".to_string()),
         _ => {
-            if stdout.starts_with("Error:") {
-                Err(stdout)
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if !stderr.is_empty() {
+                Err(format!("Biometric auth failed: {}", stderr))
+            } else if stdout.is_empty() {
+                Err("No response from Windows Hello".to_string())
             } else {
                 Err(format!("Unexpected response: {}", stdout))
             }
