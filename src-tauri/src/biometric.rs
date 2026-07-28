@@ -83,13 +83,25 @@ pub fn check_biometric_available() -> BiometricStatus {
     }
 }
 
+fn powershell51_path() -> String {
+    let sys32 = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let path = format!("{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", sys32);
+    if std::path::Path::new(&path).exists() {
+        path
+    } else {
+        "powershell".to_string()
+    }
+}
+
 pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
+    let ps = powershell51_path();
     let output = tokio::task::spawn_blocking(move || {
         let script = format!(
             "$ErrorActionPreference = 'Stop'; \
              try {{ \
                Add-Type -AssemblyName System.Runtime.WindowsRuntime; \
-               [void][System.WindowsRuntimeSystemExtensions]; \
+               $null = [Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]; \
+               $null = [Windows.Security.Credentials.UI.UserConsentVerifierResult,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]; \
                $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ \
                  $_.Name -eq 'AsTask' -and \
                  $_.GetParameters().Count -eq 1 -and \
@@ -105,8 +117,8 @@ pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
             message.replace('\'', "''")
         );
 
-        crate::hidden_cmd("powershell")
-            .args(["-NoProfile", "-Command", &script])
+        crate::hidden_cmd(&ps)
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
             .output()
     })
     .await
@@ -164,8 +176,9 @@ pub fn save_biometric_token(password: &str) -> Result<(), String> {
         path.to_string_lossy().replace('\'', "''")
     );
 
-    let output = crate::hidden_cmd("powershell")
-        .args(["-NoProfile", "-Command", &script])
+    let ps = powershell51_path();
+    let output = crate::hidden_cmd(&ps)
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .output()
         .map_err(|e| format!("Failed to run DPAPI: {}", e))?;
 
@@ -198,8 +211,9 @@ pub fn load_biometric_token() -> Result<String, String> {
         path.to_string_lossy().replace('\'', "''")
     );
 
-    let output = crate::hidden_cmd("powershell")
-        .args(["-NoProfile", "-Command", &script])
+    let ps = powershell51_path();
+    let output = crate::hidden_cmd(&ps)
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .output()
         .map_err(|e| format!("Failed to run DPAPI: {}", e))?;
 
