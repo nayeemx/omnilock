@@ -1,6 +1,6 @@
 [package]
 name = "omnilock-svc"
-version = "0.0.23"
+version = "0.0.24"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"
 description = "OmniLock Service - ACL enforcement daemon"
