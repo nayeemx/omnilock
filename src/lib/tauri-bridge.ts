@@ -233,9 +233,9 @@ export async function checkForUpdates(): Promise<{ available: boolean; version?:
       };
     }
     return { available: false };
-  } catch (e) {
+  } catch (e: any) {
     console.error("Update check failed:", e);
-    return null;
+    throw new Error("Update check failed: " + (e?.message || String(e)));
   }
 }
 
