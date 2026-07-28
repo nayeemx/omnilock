@@ -16,7 +16,7 @@ fn biometric_token_path() -> PathBuf {
 }
 
 pub fn check_biometric_available() -> BiometricStatus {
-    let output = std::process::Command::new("powershell")
+    let output = crate::hidden_cmd("powershell")
         .args(["-NoProfile", "-Command",
             "$ErrorActionPreference = 'SilentlyContinue'; \
              Add-Type -AssemblyName System.Runtime.WindowsRuntime; \
@@ -37,7 +37,7 @@ pub fn check_biometric_available() -> BiometricStatus {
         Err(_) => {}
     }
 
-    let pin_check = std::process::Command::new("powershell")
+    let pin_check = crate::hidden_cmd("powershell")
         .args(["-NoProfile", "-Command",
             "$ErrorActionPreference = 'SilentlyContinue'; \
              $kp = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\Credential Providers\\{D6886603-9D4F-4D48-A512-AD2EDE1AC5B1}' -ErrorAction SilentlyContinue; \
@@ -51,7 +51,7 @@ pub fn check_biometric_available() -> BiometricStatus {
         }
     }
 
-    let service_check = std::process::Command::new("powershell")
+    let service_check = crate::hidden_cmd("powershell")
         .args(["-NoProfile", "-Command",
             "Get-Service -Name 'WbioSrvc' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status"])
         .output();
@@ -81,7 +81,7 @@ pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
     );
 
     let output = tokio::task::spawn_blocking(move || {
-        std::process::Command::new("powershell")
+        crate::hidden_cmd("powershell")
             .args(["-NoProfile", "-Command", &script])
             .output()
     })
@@ -116,9 +116,9 @@ pub fn save_biometric_token(password: &str) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {}", e))?;
     }
 
-    let output = std::process::Command::new("powershell")
+    let output = crate::hidden_cmd("powershell")
         .args(["-NoProfile", "-Command", &format!(
-            "$bytes = [System.Text.Encoding]::UTF8.GetBytes('{}'); $protected = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); [System.IO.File]::WriteAllBytes('{}', $protected)",
+            "Add-Type -AssemblyName System.Security; $bytes = [System.Text.Encoding]::UTF8.GetBytes('{}'); $protected = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); [System.IO.File]::WriteAllBytes('{}', $protected)",
             password.replace('\'', "''"),
             path.to_string_lossy().replace('\'', "''")
         )])
@@ -139,9 +139,9 @@ pub fn load_biometric_token() -> Result<String, String> {
         return Err("No biometric token found".to_string());
     }
 
-    let output = std::process::Command::new("powershell")
+    let output = crate::hidden_cmd("powershell")
         .args(["-NoProfile", "-Command", &format!(
-            "$protected = [System.IO.File]::ReadAllBytes('{}'); $bytes = [System.Security.Cryptography.ProtectedData]::Unprotect($protected, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); [System.Text.Encoding]::UTF8.GetString($bytes)",
+            "Add-Type -AssemblyName System.Security; $protected = [System.IO.File]::ReadAllBytes('{}'); $bytes = [System.Security.Cryptography.ProtectedData]::Unprotect($protected, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); [System.Text.Encoding]::UTF8.GetString($bytes)",
             path.to_string_lossy().replace('\'', "''")
         )])
         .output()

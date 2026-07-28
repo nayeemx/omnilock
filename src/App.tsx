@@ -207,7 +207,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex text-[color:var(--foreground)]">
-      <Sidebar tab={activeTab} setTab={setActiveTab} config={vaultConfig} />
+      <Sidebar tab={activeTab} setTab={setActiveTab} config={vaultConfig} onLogout={handleLockNow} />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar onLockNow={handleLockNow} totpEnabled={vaultConfig?.totp_enabled} />
         <main className="flex-1 p-8 overflow-auto">

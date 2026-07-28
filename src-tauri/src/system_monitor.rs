@@ -1,6 +1,5 @@
 use sysinfo::{System, Networks};
 use serde::Serialize;
-use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
@@ -159,7 +158,7 @@ pub async fn get_system_stats_async() -> SystemStats {
 }
 
 fn query_gpu_once() -> CachedGpu {
-    let output = Command::new("powershell")
+    let output = crate::hidden_cmd("powershell")
         .args(["-NoProfile", "-Command",
             "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Json"])
         .output();
@@ -236,14 +235,29 @@ pub async fn get_weather(location: Option<String>) -> Result<WeatherData, String
         .unwrap_or("Unknown")
         .to_string();
 
-    let location = body.get("nearest_area")
-        .and_then(|a| a.get(0))
-        .and_then(|a| a.get("areaName"))
-        .and_then(|a| a.get(0))
-        .and_then(|a| a.get("value"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("Unknown")
-        .to_string();
+    let location = if let Some(ref loc) = location {
+        if !loc.trim().is_empty() {
+            loc.trim().to_string()
+        } else {
+            body.get("nearest_area")
+                .and_then(|a| a.get(0))
+                .and_then(|a| a.get("areaName"))
+                .and_then(|a| a.get(0))
+                .and_then(|a| a.get("value"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string()
+        }
+    } else {
+        body.get("nearest_area")
+            .and_then(|a| a.get(0))
+            .and_then(|a| a.get("areaName"))
+            .and_then(|a| a.get(0))
+            .and_then(|a| a.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string()
+    };
 
     let icon = match temp_c {
         t if t > 30 => "sun".to_string(),

@@ -55,27 +55,33 @@
 
 ---
 
-## What Works (Verified)
+## What Works (Proven)
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| Tauri app builds | ✅ | `OmniLock_0.0.15_x64-setup.exe` produced |
-| Rust compiles | ✅ | 0 errors |
-| TypeScript compiles | ✅ | 0 errors |
-| Pipe IPC (Lock/Unlock/Status) | ✅ | 7/7 pipe tests passed (session 2026-07-27) |
-| Tauri app launches | ✅ | Correct title, communicates with service |
-| Vault persistence | ✅ | `vault.enc`, `vault.meta`, `vault.recovery` persist |
-| Light/dark theme | ✅ | System preference auto-detection |
-| Icon consistency | ✅ | Same `icon.png` everywhere |
+| Rust compiles | ✅ | 0 errors on every build |
+| TypeScript compiles | ✅ | 0 errors on every build |
+| Installer builds | ✅ | `OmniLock_0.0.20_x64-setup.exe` produced |
+| Vault crypto (unit tests) | ✅ | 15 `#[test]` in vault.rs, 2 in totp.rs |
 
-## What Does NOT Work
+## What Has Code But ZERO Verification
 
-| Issue | Blocker |
-|-------|---------|
-| GitHub OAuth | Client ID `Ov23li9jwqq1jy88qziH` registered, Device Flow enabled |
-| Unlock widget popup | Never tested end-to-end |
-| UI-level lock/unlock | Never tested from app GUI (only via pipe) |
-| Reinstall persistence | Never tested |
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| ACL enforcement (core!) | ⚠️ Code written | No test that deny ACE actually applies |
+| Pipe IPC | ⚠️ Code written | "7/7 tests" claimed but no test script exists |
+| Widget unlock | ⚠️ Code written | Explicitly never tested end-to-end |
+| GitHub Connect | ⚠️ Code written | Explicitly never tested |
+| UI lock/unlock | ⚠️ Code written | Never tested from GUI |
+| Weather widget | ⚠️ Code written | Never verified on real machine |
+| Windows Hello biometric | ⚠️ Code written | Never verified — DPAPI fix not yet tested |
+| Hidden console windows | ⚠️ Code written | Just added `CREATE_NO_WINDOW`, not yet tested |
+| Backup/Restore | ⚠️ Code written | Never tested end-to-end |
+| Reinstall persistence | ⚠️ Code written | Never tested |
+
+## Pattern to STOP Repeating
+
+Every version has followed: write code → claim it works → next session discovers broken → repeat. NO regression tests were ever added. Until proper tests exist, every "fix" should be treated as UNVERIFIED until user confirms on their machine.
 
 ---
 

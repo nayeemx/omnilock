@@ -48,7 +48,7 @@ pub fn enumerate_installed_apps() -> Vec<(String, String, String)> {
 
     for (hive, subkey) in hives {
         let full_key = format!("{}\\{}", hive, subkey);
-        if let Ok(output) = std::process::Command::new("reg")
+        if let Ok(output) = crate::hidden_cmd("reg")
             .args(["query", &full_key, "/s"])
             .output()
         {

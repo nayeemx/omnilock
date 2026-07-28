@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Activity } from "lucide-react";
-import { type VaultConfigDto, getWatchdogStatus, type WatchdogStatusDto } from "../../lib/tauri-bridge";
+import { Activity, LogOut } from "lucide-react";
+import { type VaultConfigDto, getWatchdogStatus, type WatchdogStatusDto, lockNow } from "../../lib/tauri-bridge";
 import { tabs, type TabId } from "../types";
 
 function formatUptime(secs: number): string {
@@ -12,7 +12,7 @@ function formatUptime(secs: number): string {
   return `${m}m`;
 }
 
-export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId) => void; config: VaultConfigDto | null }) {
+export function Sidebar({ tab, setTab, config, onLogout }: { tab: TabId; setTab: (t: TabId) => void; config: VaultConfigDto | null; onLogout: () => void }) {
   const [watchdog, setWatchdog] = useState<WatchdogStatusDto | null>(null);
 
   useEffect(() => {
@@ -54,7 +54,14 @@ export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId
         })}
       </nav>
 
-      <div className="mt-auto glass rounded-xl p-4">
+      <div className="mt-auto">
+        <button onClick={async () => { await lockNow(); onLogout(); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:bg-surface border border-transparent transition-all mb-2">
+          <LogOut className="w-4 h-4" />
+          <span className="flex-1 text-left">Lock & Logout</span>
+        </button>
+
+        <div className="glass rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
           <Activity className="w-4 h-4 text-[color:var(--success)]" />
           <span className="text-xs uppercase tracking-widest text-[color:var(--muted-foreground)]">Guardian Daemon</span>
@@ -68,6 +75,7 @@ export function Sidebar({ tab, setTab, config }: { tab: TabId; setTab: (t: TabId
         </div>
         <div className="mt-3 pt-3 border-t border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
           Uptime <span className="text-[color:var(--foreground)]">{watchdog ? formatUptime(watchdog.uptime_secs) : "..."}</span>
+        </div>
         </div>
       </div>
     </aside>

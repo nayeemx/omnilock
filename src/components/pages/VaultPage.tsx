@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import {
-  HardDrive, Folder, FileLock2, Lock, Unlock, Plus, X, Loader2, FolderOpen, FileSearch, Search,
+  HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
-  addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile, showWidget,
+  addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile,
   pickFolder, pickFile,
   type VaultConfigDto,
 } from "../../lib/tauri-bridge";
@@ -134,12 +134,6 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                     {lockingDrive === letter ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                     {isLocked ? "Unlock" : "Lock"}
                   </button>
-                  {isLocked && (
-                    <button onClick={() => showWidget("drive", letter, `${letter}:\\`)}
-                            className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
-                      Password Unlock
-                    </button>
-                  )}
                   <span className={isLocked ? "text-[color:var(--primary)]" : ""}>{isLocked ? "DACL Enforced" : "Unprotected"}</span>
                 </div>
               </div>
@@ -184,12 +178,10 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                 <code className="text-sm">{f}</code>
                 <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">Folder · <span className="text-[color:var(--warning)]">DENIED · EVERYONE</span></div>
               </div>
-              <button onClick={() => handleRemovePath(f, "folder")} className="p-1.5 rounded-lg hover:bg-surface-hover text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
-                <X className="w-4 h-4" />
-              </button>
-              <button onClick={() => showWidget("folder", f, f.split("\\").pop() || f)}
-                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
-                Unlock
+              <button onClick={() => handleRemovePath(f, "folder")} disabled={lockingPath === f}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
+                {lockingPath === f ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlock className="w-3 h-3" />}
+                {lockingPath === f ? "Unlocking..." : "Unlock"}
               </button>
             </div>
           ))}
@@ -202,12 +194,10 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                 <code className="text-sm">{f}</code>
                 <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">File · <span className="text-[color:var(--warning)]">DENIED · SYSTEM</span></div>
               </div>
-              <button onClick={() => handleRemovePath(f, "file")} className="p-1.5 rounded-lg hover:bg-surface-hover text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)]">
-                <X className="w-4 h-4" />
-              </button>
-              <button onClick={() => showWidget("file", f, f.split("\\").pop() || f)}
-                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
-                Unlock
+              <button onClick={() => handleRemovePath(f, "file")} disabled={lockingPath === f}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
+                {lockingPath === f ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlock className="w-3 h-3" />}
+                {lockingPath === f ? "Unlocking..." : "Unlock"}
               </button>
             </div>
           ))}

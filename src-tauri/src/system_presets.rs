@@ -1,5 +1,4 @@
 use sysinfo::System;
-use std::process::Command;
 
 use crate::models::SystemPresets;
 
@@ -118,12 +117,12 @@ fn set_registry_lock(target: &str, lock: bool) -> Result<(), String> {
     };
 
     if lock {
-        Command::new("reg")
+        crate::hidden_cmd("reg")
             .args(["add", key, "/v", value_name, "/t", "REG_DWORD", "/d", disable_value, "/f"])
             .output()
             .map_err(|e| e.to_string())?;
     } else {
-        Command::new("reg")
+        crate::hidden_cmd("reg")
             .args(["delete", key, "/v", value_name, "/f"])
             .output()
             .map_err(|e| e.to_string())?;

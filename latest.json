@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T09:00:00Z",
-  "version": "v0.0.19",
-  "notes": "Improved Windows Hello detection. Now checks biometric service and credential provider registry for better hardware compatibility.",
+  "pub_date": "2026-07-28T09:10:00Z",
+  "version": "v0.0.20",
+  "notes": "Hidden console windows (no more PowerShell flashes). Direct vault unlock from GUI (no more password re-entry). Logout button. Fixed weather location display. Fixed biometric DPAPI assembly loading.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.19/OmniLock_0.0.19_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1ZoQ3BMQ1hCc2ZDQnFKRklFMmVZbktmTzlVTXlGSjI4Qk9ISkFhUFZlTDhlb0w0bWtyUXg2cGREK0k0MSt3SmpBejNYb1ZFeTIvN0NJOEUvajFiZmdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjA1Nzc5CWZpbGU6T21uaUxvY2tfMC4wLjE5X3g2NC1zZXR1cC5leGUKVExOOGp4ZTlnZ2t1cU45UGZNR0R0U0E0NTF6bXAzTzBvakZDbjZpRG51Y0pDc2dldkcwVUdtZEZFQWE4UnJMaEE5bVlRdHRFVlFvbEVIUUthWWdFQWc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.20/OmniLock_0.0.20_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1ZzeE44by9WOGQ0Y2RWTG5Fc0lrRE9aemJHNE9MbDBCUi9TZTJZbzVxYk93NWlNcUpjRmVNOG14bzA3K3hwSXhZNjE3ZzhkVElRKzJZUjQ4QldKVVFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjE1MjI4CWZpbGU6T21uaUxvY2tfMC4wLjIwX3g2NC1zZXR1cC5leGUKTmhFQXJ2NjU0dThXMFlWS280WmxHRmg4QkV6SzIwUEhXOVJmcUZES2UxSE5TT3U2QllvNVZrRVJHQXR6Vk9HY01ydkVwMXBoWTljUTcyWDFxY3BCQnc9PQo="
     }
   }
 }

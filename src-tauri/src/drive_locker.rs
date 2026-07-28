@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::path::Path;
 
 // ACL enforcement is handled by the Windows service via named pipe.
@@ -15,7 +14,7 @@ pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
         calculate_nodrives_value(drive_letter)
     );
 
-    Command::new("cmd")
+    crate::hidden_cmd("cmd")
         .args(["/C", &reg_cmd])
         .output()
         .map_err(|e| e.to_string())?;
@@ -31,7 +30,7 @@ pub fn unlock_drive(drive_letter: &str, remaining_locked: &[String]) -> Result<(
 
     if remaining_locked.is_empty() {
         let reg_cmd = r"reg delete HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /f";
-        Command::new("cmd")
+        crate::hidden_cmd("cmd")
             .args(["/C", reg_cmd])
             .output()
             .map_err(|e| e.to_string())?;
@@ -44,7 +43,7 @@ pub fn unlock_drive(drive_letter: &str, remaining_locked: &[String]) -> Result<(
             r"reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /t REG_DWORD /d {} /f",
             mask
         );
-        Command::new("cmd")
+        crate::hidden_cmd("cmd")
             .args(["/C", &reg_cmd])
             .output()
             .map_err(|e| e.to_string())?;

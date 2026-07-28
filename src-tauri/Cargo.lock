@@ -2455,7 +2455,7 @@ dependencies = [
 
 [[package]]
 name = "omnilock"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "omnilock-shared"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "serde",
  "serde_json",

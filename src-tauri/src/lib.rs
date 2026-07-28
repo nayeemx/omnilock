@@ -27,6 +27,16 @@ use models::*;
 
 pub static UNLOCK_TARGET: OnceLock<Mutex<Option<UnlockTarget>>> = OnceLock::new();
 
+/// Create a process Command with CREATE_NO_WINDOW to prevent visible console flashes.
+#[cfg(target_os = "windows")]
+pub fn hidden_cmd(program: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut cmd = std::process::Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
 struct AppState {
     session_token: Mutex<Option<SessionToken>>,
     vault_config: Mutex<Option<VaultConfig>>,
