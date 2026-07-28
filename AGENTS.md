@@ -4,10 +4,10 @@
 
 ## Current State
 
-- **Version**: 0.0.25 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.0.25)
+- **Version**: 0.0.26 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.0.26)
 - **Last Updated**: 2026-07-28
 - **Git**: clean, all changes committed on `main`
-- **Build**: signed v0.0.25 installed at https://github.com/nayeemx/omnilock/releases/tag/v0.0.25
+- **Build**: signed v0.0.26 installed at https://github.com/nayeemx/omnilock/releases/tag/v0.0.26
 
 ---
 
@@ -43,6 +43,14 @@
 5. **v0.0.25 released** — Signed installer at https://github.com/nayeemx/omnilock/releases/tag/v0.0.25, auto-update `latest.json` updated.
 
 ---
+
+1. **Auto-updater endpoint fix** — Switched `tauri.conf.json` updater endpoint from `nayeemx.github.io/omnilock/latest.json` (unreachable due to network/firewall blocking GitHub Pages CDN) to `raw.githubusercontent.com/nayeemx/omnilock/main/latest.json`.
+2. **Auto-updater error handling fix** — `checkForUpdates()` in `tauri-bridge.ts` now throws on error instead of returning `null`. UI shows "Failed to check for updates: ..." instead of misleading "No updates available."
+3. **v0.0.26 released** — Signed installer at https://github.com/nayeemx/omnilock/releases/tag/v0.0.26, auto-update `latest.json` updated.
+
+---
+
+## What Was Just Done (v0.0.24 → v0.0.25)
 
 1. **Widget close button** — Added X close button and Cancel button to UnlockWidget. Escape key closes widget. Auto-closes after successful unlock.
 2. **GitHub Connect fix** — `poll_for_token` now saves `sync.meta.json` after getting token, so `get_sync_status()` returns `connected: true`. UI correctly shows "Active" badge after Device Flow auth.
