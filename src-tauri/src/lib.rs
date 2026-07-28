@@ -279,9 +279,10 @@ fn cmd_add_locked_file(
 fn cmd_remove_locked_file(
     state: State<'_, AppState>,
     path: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     require_valid_session(&state)?;
     file_locker::unlock_file(&path)?;
+    let verified = file_locker::verify_lock(&path).unwrap_or(true);
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&path, password);
@@ -290,7 +291,7 @@ fn cmd_remove_locked_file(
     config.locked_files.retain(|f| f != &path);
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
-    Ok(())
+    if !verified { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
 
 #[tauri::command]
@@ -318,9 +319,10 @@ fn cmd_add_locked_folder(
 fn cmd_remove_locked_folder(
     state: State<'_, AppState>,
     path: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     require_valid_session(&state)?;
     file_locker::unlock_folder(&path)?;
+    let verified = file_locker::verify_lock(&path).unwrap_or(true);
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&path, password);
@@ -329,7 +331,7 @@ fn cmd_remove_locked_folder(
     config.locked_folders.retain(|f| f != &path);
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
-    Ok(())
+    if !verified { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
 
 #[tauri::command]
@@ -648,14 +650,20 @@ fn cmd_widget_unlock(
     match target.target_type.as_str() {
         "file" => {
             file_locker::unlock_file(&target.target_id)?;
+            let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
+            if verified { return Err("Unlock failed - ACL still present".to_string()); }
             service_client::notify_unlock_item(&target.target_id, &password);
         }
         "folder" => {
             file_locker::unlock_folder(&target.target_id)?;
+            let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
+            if verified { return Err("Unlock failed - ACL still present".to_string()); }
             service_client::notify_unlock_item(&target.target_id, &password);
         }
         "app" => {
-            let _ = file_locker::unlock_file(&target.target_id);
+            file_locker::unlock_file(&target.target_id)?;
+            let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
+            if verified { return Err("Unlock failed - ACL still present".to_string()); }
             service_client::notify_unlock_item(&target.target_id, &password);
             config.locked_apps.retain(|a| a.path != target.target_id);
         }

@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T09:40:00Z",
-  "version": "v0.0.22",
-  "notes": "Lock verification: UI now shows whether ACL was actually applied. If it says 'unverified', you need to run OmniLock as Administrator for file locking to work.",
+  "pub_date": "2026-07-28T10:00:00Z",
+  "version": "v0.0.23",
+  "notes": "Fix unlock: properly removes DENY ACL. UI now shows if unlock succeeded or failed. Weather uses Open-Meteo API for better accuracy.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.22/OmniLock_0.0.22_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1NsZ292UUloaFg1Zk12MUVha0duOW1ZbWZ0RThYaktaa1NsbVR6bXkwZWMwRWcycDNmS1hDVXdWcjIyQnp0cUppSDRpSjRlQzgyTU1ab0VlK242aVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjE4MzkyCWZpbGU6T21uaUxvY2tfMC4wLjIyX3g2NC1zZXR1cC5leGUKSDBlNW04eWRxNEtVZjFvSFNRWVhzck4wa1ZrYTVlL1B6QjlWWGMybzdvbmtjYXBmbVkwUExWSU9XYmw3TSs3UkNXN2p4YWkxK3VrbndUVDVxOGlmRHc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.23/OmniLock_0.0.23_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1VKV0FDalhQRUtGUUkyblpNNUp6dlJkMUk5UUdndG1IanpzcS9VcktxYlQrTHlsWHVVeFJXdHJvY3ZQZlk0czdhV0dncXlZT2JaSVp5TFhHSjlabFF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjI2MTkzCWZpbGU6T21uaUxvY2tfMC4wLjIzX3g2NC1zZXR1cC5leGUKWURlL1pualdyeVRXVTlZdDZjV1NiZmg5YnQ4R0R5OW9IMlU1SSt6dTZtVlNScUVmUllWZHZYNHBncVNNTGxad3JXM1B4cXNucU8xQWJvZjBPRWdzREE9PQo="
     }
   }
 }

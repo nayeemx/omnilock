@@ -96,7 +96,7 @@ export async function addLockedFile(path: string): Promise<string> {
   return invoke("cmd_add_locked_file", { path });
 }
 
-export async function removeLockedFile(path: string): Promise<void> {
+export async function removeLockedFile(path: string): Promise<string> {
   return invoke("cmd_remove_locked_file", { path });
 }
 
@@ -104,7 +104,7 @@ export async function addLockedFolder(path: string): Promise<string> {
   return invoke("cmd_add_locked_folder", { path });
 }
 
-export async function removeLockedFolder(path: string): Promise<void> {
+export async function removeLockedFolder(path: string): Promise<string> {
   return invoke("cmd_remove_locked_folder", { path });
 }
 

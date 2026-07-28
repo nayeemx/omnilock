@@ -192,80 +192,121 @@ fn query_gpu_once() -> CachedGpu {
     CachedGpu { name: "Unknown GPU".to_string(), vram_mb: 0 }
 }
 
+fn wmo_description(code: i32) -> String {
+    match code {
+        0 => "Clear sky".to_string(),
+        1 => "Mainly clear".to_string(),
+        2 => "Partly cloudy".to_string(),
+        3 => "Overcast".to_string(),
+        45 | 48 => "Fog".to_string(),
+        51 | 53 | 55 => "Drizzle".to_string(),
+        56 | 57 => "Freezing drizzle".to_string(),
+        61 | 63 | 65 => "Rain".to_string(),
+        66 | 67 => "Freezing rain".to_string(),
+        71 | 73 | 75 => "Snow".to_string(),
+        77 => "Snow grains".to_string(),
+        80 | 81 | 82 => "Rain showers".to_string(),
+        85 | 86 => "Snow showers".to_string(),
+        95 => "Thunderstorm".to_string(),
+        96 | 99 => "Thunderstorm with hail".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+fn wmo_icon(code: i32) -> String {
+    match code {
+        0 => "sun".to_string(),
+        1 | 2 => "cloud-sun".to_string(),
+        3 => "cloud".to_string(),
+        45 | 48 => "cloud-fog".to_string(),
+        51 | 53 | 55 | 56 | 57 => "cloud-drizzle".to_string(),
+        61 | 63 | 65 | 66 | 67 | 80 | 81 | 82 => "cloud-rain".to_string(),
+        71 | 73 | 75 | 77 | 85 | 86 => "cloud-snow".to_string(),
+        95 | 96 | 99 => "cloud-lightning".to_string(),
+        _ => "cloud".to_string(),
+    }
+}
+
 pub async fn get_weather(location: Option<String>) -> Result<WeatherData, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let url = match &location {
-        Some(loc) if !loc.trim().is_empty() => format!("https://wttr.in/{}?format=j1", loc.trim()),
-        _ => "https://wttr.in/?format=j1".to_string(),
+    let (lat, lon, display_name) = match &location {
+        Some(loc) if !loc.trim().is_empty() => {
+            let geo_url = format!(
+                "https://geocoding-api.open-meteo.com/v1/search?name={}&count=1&language=en",
+                urlencoding::encode(loc.trim())
+            );
+            let geo_resp = client.get(&geo_url).send().await
+                .map_err(|e| format!("Geocoding request failed: {}", e))?;
+            let geo_body: serde_json::Value = geo_resp.json().await
+                .map_err(|e| format!("Failed to parse geocoding: {}", e))?;
+
+            let result = geo_body.get("results")
+                .and_then(|r| r.get(0))
+                .ok_or_else(|| format!("Location '{}' not found", loc.trim()))?;
+
+            let lat = result.get("latitude").and_then(|v| v.as_f64())
+                .ok_or("Missing latitude")?;
+            let lon = result.get("longitude").and_then(|v| v.as_f64())
+                .ok_or("Missing longitude")?;
+            let name = result.get("name").and_then(|v| v.as_str())
+                .unwrap_or(loc.trim());
+            let country = result.get("country").and_then(|v| v.as_str()).unwrap_or("");
+            let display = if country.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}, {}", name, country)
+            };
+            (lat, lon, display)
+        }
+        _ => {
+            let ip_resp = client.get("https://ipapi.co/json/").send().await
+                .map_err(|e| format!("IP geolocation failed: {}", e))?;
+            let ip_body: serde_json::Value = ip_resp.json().await
+                .map_err(|e| format!("Failed to parse IP location: {}", e))?;
+            let lat = ip_body.get("latitude").and_then(|v| v.as_f64()).unwrap_or(23.81);
+            let lon = ip_body.get("longitude").and_then(|v| v.as_f64()).unwrap_or(90.41);
+            let city = ip_body.get("city").and_then(|v| v.as_str()).unwrap_or("Unknown");
+            let country = ip_body.get("country_name").and_then(|v| v.as_str()).unwrap_or("");
+            let display = if country.is_empty() {
+                city.to_string()
+            } else {
+                format!("{}, {}", city, country)
+            };
+            (lat, lon, display)
+        }
     };
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Weather request failed: {}", e))?;
+    let weather_url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto",
+        lat, lon
+    );
 
-    let body: serde_json::Value = resp.json().await
+    let weather_resp = client.get(&weather_url).send().await
+        .map_err(|e| format!("Weather request failed: {}", e))?;
+    let weather_body: serde_json::Value = weather_resp.json().await
         .map_err(|e| format!("Failed to parse weather: {}", e))?;
 
-    let current = body.get("current_condition")
-        .and_then(|c| c.get(0))
-        .ok_or("No current condition data")?;
+    let current = weather_body.get("current")
+        .ok_or("No current weather data")?;
 
-    let temp_c = current.get("temp_C").and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok()).unwrap_or(0);
-    let temp_f = current.get("temp_F").and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok()).unwrap_or(0);
-    let humidity = current.get("humidity").and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok()).unwrap_or(0);
-    let wind_kph = current.get("windspeedKmph").and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok()).unwrap_or(0);
-    let feels_like_c = current.get("FeelsLikeC").and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok()).unwrap_or(0);
+    let temp_c = current.get("temperature_2m").and_then(|v| v.as_f64())
+        .map(|t| t as i32).unwrap_or(0);
+    let temp_f = (temp_c as f64 * 9.0 / 5.0 + 32.0) as i32;
+    let humidity = current.get("relative_humidity_2m").and_then(|v| v.as_f64())
+        .map(|h| h as u32).unwrap_or(0);
+    let wind_kph = current.get("wind_speed_10m").and_then(|v| v.as_f64())
+        .map(|w| w as u32).unwrap_or(0);
+    let feels_like_c = current.get("apparent_temperature").and_then(|v| v.as_f64())
+        .map(|t| t as i32).unwrap_or(0);
+    let weather_code = current.get("weather_code").and_then(|v| v.as_f64())
+        .map(|c| c as i32).unwrap_or(0);
 
-    let desc_arr = current.get("weatherDesc")
-        .and_then(|d| d.get(0));
-    let description = desc_arr
-        .and_then(|d| d.get("value"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("Unknown")
-        .to_string();
-
-    let location = if let Some(ref loc) = location {
-        if !loc.trim().is_empty() {
-            loc.trim().to_string()
-        } else {
-            body.get("nearest_area")
-                .and_then(|a| a.get(0))
-                .and_then(|a| a.get("areaName"))
-                .and_then(|a| a.get(0))
-                .and_then(|a| a.get("value"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown")
-                .to_string()
-        }
-    } else {
-        body.get("nearest_area")
-            .and_then(|a| a.get(0))
-            .and_then(|a| a.get("areaName"))
-            .and_then(|a| a.get(0))
-            .and_then(|a| a.get("value"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown")
-            .to_string()
-    };
-
-    let icon = match temp_c {
-        t if t > 30 => "sun".to_string(),
-        t if t > 20 => "cloud-sun".to_string(),
-        t if t > 10 => "cloud".to_string(),
-        t if t > 0 => "cloud-drizzle".to_string(),
-        _ => "snowflake".to_string(),
-    };
+    let description = wmo_description(weather_code);
+    let icon = wmo_icon(weather_code);
 
     Ok(WeatherData {
         temp_c,
@@ -274,7 +315,7 @@ pub async fn get_weather(location: Option<String>) -> Result<WeatherData, String
         humidity,
         wind_kph,
         feels_like_c,
-        location,
+        location: display_name,
         icon,
     })
 }

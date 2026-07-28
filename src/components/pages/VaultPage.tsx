@@ -90,12 +90,17 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const handleRemovePath = async (path: string, type: "file" | "folder") => {
     clearMessages();
     try {
+      let result: string;
       if (type === "folder") {
-        await removeLockedFolder(path);
+        result = await removeLockedFolder(path);
       } else {
-        await removeLockedFile(path);
+        result = await removeLockedFile(path);
       }
-      setSuccess(`Path unlocked: ${path}`);
+      if (result === "unlock_failed") {
+        setError(`Unlock failed for ${path} - Windows ACL may still be blocking access. Try running as Administrator.`);
+      } else {
+        setSuccess(`Path unlocked: ${path}`);
+      }
       await refresh();
     } catch (e: any) {
       setError("Failed to unlock path: " + e);
