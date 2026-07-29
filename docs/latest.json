@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T15:35:00Z",
-  "version": "v0.0.26",
-  "notes": "Fix auto-updater: switch to raw.githubusercontent.com, show actual error instead of 'no updates available'.",
+  "pub_date": "2026-07-28T17:15:00Z",
+  "version": "v0.0.27",
+  "notes": "Fix: app window not appearing. Setup hook never returns Err, no unwrap/panic, has step logging.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.26/OmniLock_0.0.26_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2NGNVRmVWYwTmFEZGorZGs5M0t3LzFRSEk2SmZ4cE5UTGVid2NDdE4rS3VmQkV4Z0lnc29RclpXWm1ZK2JGTVVwZGljak1vMDVWRzdxcGo3amNUbVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MjUyODU4CWZpbGU6T21uaUxvY2tfMC4wLjI2X3g2NC1zZXR1cC5leGUKbERkckxOS2N0OUlnZWxqZ0JoSlAvdUxkNUZoMkk2c3BieXJ4bkdma0xBcXYzdFp3Y0N2MHB4anIwSCtLdjVrQjFHVG0ydGxXVHR3dWU3TGdLQzFtRHc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.27/OmniLock_0.0.27_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2NqaUM5UjZ0RDdMOWo4amJmODVVQzlBYnFDTlpnMFIyanlMNmhuM2UycVFOUWU4OUVkbzVVZ2NXK0M5Q3ZwNmlxdU55S1ZRVlcyY294azB2bEt6c1EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzA1OTA4CWZpbGU6T21uaUxvY2tfMC4wLjI3X3g2NC1zZXR1cC5leGUKbkdzUldtN0U0R1JYejA5V3BDd2RlVUh4RytaRXdtYUlOQWRoYmFBSHBDcnJYQmpKbmZCSTRWbHdmNU9BZktQSnl0Q2dYN2o0b2I2VUdQVDF4eEpyRGc9PQo="
     }
   }
 }
