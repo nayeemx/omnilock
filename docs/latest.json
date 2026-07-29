@@ -1,11 +1,11 @@
 {
-  "pub_date": "2026-07-28T17:15:00Z",
-  "version": "v0.0.27",
-  "notes": "Fix: app window not appearing. Setup hook never returns Err, no unwrap/panic, has step logging.",
+  "pub_date": "2026-07-29T13:12:42Z",
+  "version": "v0.0.29",
+  "notes": "Fix: app window not appearing (deadlock in logger::init() on non-reentrant Mutex). Root cause found and fixed. Added fallback updater endpoint.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.27/OmniLock_0.0.27_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2NqaUM5UjZ0RDdMOWo4amJmODVVQzlBYnFDTlpnMFIyanlMNmhuM2UycVFOUWU4OUVkbzVVZ2NXK0M5Q3ZwNmlxdU55S1ZRVlcyY294azB2bEt6c1EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzA1OTA4CWZpbGU6T21uaUxvY2tfMC4wLjI3X3g2NC1zZXR1cC5leGUKbkdzUldtN0U0R1JYejA5V3BDd2RlVUh4RytaRXdtYUlOQWRoYmFBSHBDcnJYQmpKbmZCSTRWbHdmNU9BZktQSnl0Q2dYN2o0b2I2VUdQVDF4eEpyRGc9PQo="
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.29/OmniLock_0.0.29_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2JQaXRSdm0zdVliL1NvVkVQZXFxdXpubWRpVEYrdVVRNmZEZXl6aEdLemY4bmZuWlZqejlqcEdEMFBYOXFhWG5Pcy9vL3VFbmw0ZmpBYlBxRGpQL2dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzA5MTI2CWZpbGU6T21uaUxvY2tfMC4wLjI5X3g2NC1zZXR1cC5leGUKYjlneFQxb0FkSzB5VVhWSFloZEVRU3gwSE1BV0pLUC9OMk5vNFdUTEYzYzF1MkFIc2trZUwxS25ma1VJKzNMT2lKdG43dUtneG5uaUZpaklJY2ZQQ0E9PQo="
     }
   }
 }
