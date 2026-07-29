@@ -32,7 +32,36 @@ fn current_user_sid_buf() -> Result<Vec<u8>, String> {
     }
 }
 
+unsafe fn enable_privilege(name: &str) -> Result<(), String> {
+    let mut h_token = std::ptr::null_mut();
+    if OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &mut h_token) == 0 {
+        return Err("OpenProcessToken failed".to_string());
+    }
+    let name_w = to_wide(name);
+    let mut luid: LUID = std::mem::zeroed();
+    if LookupPrivilegeValueW(std::ptr::null_mut(), name_w.as_ptr(), &mut luid) == 0 {
+        CloseHandle(h_token);
+        return Err(format!("LookupPrivilegeValue({}) failed", name));
+    }
+    let mut tp = TOKEN_PRIVILEGES {
+        PrivilegeCount: 1,
+        Privileges: [LUID_AND_ATTRIBUTES {
+            Luid: luid,
+            Attributes: SE_PRIVILEGE_ENABLED,
+        }],
+    };
+    let ret = AdjustTokenPrivileges(h_token, 0, &mut tp, std::mem::size_of::<TOKEN_PRIVILEGES>() as u32, std::ptr::null_mut(), std::ptr::null_mut());
+    let gle = GetLastError();
+    if ret == 0 || gle != 0 {
+        CloseHandle(h_token);
+        return Err(format!("AdjustTokenPrivileges({}) failed: err={}", name, gle));
+    }
+    CloseHandle(h_token);
+    Ok(())
+}
+
 unsafe fn take_ownership(path_w: *const u16) -> Result<(), String> {
+    enable_privilege("SeTakeOwnershipPrivilege")?;
     let buf = current_user_sid_buf()?;
     let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
     let ret = SetNamedSecurityInfoW(

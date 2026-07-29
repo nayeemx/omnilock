@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-07-29T11:04:53Z",
-  "version": "v0.0.30",
-  "notes": "Fix: rescue mode now handles ACCESS_DENIED on locked files by taking OWNERSHIP first. Service binary auto-start finds correct path. Drive lock detection reads actual NoDrives DWORD. Biometric reason only shown when hardware unavailable.",
+  "pub_date": "2026-07-29T11:24:08Z",
+  "version": "v0.0.31",
+  "notes": "Fix v2: SeTakeOwnershipPrivilege now enabled before SetNamedSecurityInfoW(OWNER) so rescue mode actually works. Previous v0.0.30 fix was incomplete — ownership change still failed with ACCESS_DENIED.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.30/OmniLock_0.0.30_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1d3emk1UHcyM3gwbEdnU3YrRFJRQ0M5c3YzalJsVmN3N1kwSTRxZTByUlVRdzZnaU9BRnFpWU1qNnlVa0lxSEUwUUNtcWpUdVI3cnprRHJMT3JHeUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzIzMDY0CWZpbGU6T21uaUxvY2tfMC4wLjMwX3g2NC1zZXR1cC5leGUKNDNwM2F3ZnFQSEtxYVNneTdzMUVOR2hmSng5Q08wWVVCMkVaS1doaEhCRzhXaFRMSWI4SkdBWHRybW9UR0lnNmUxSTgzYS9Jc0ZuUmNhbFdDWWRGRGc9PQo=",
-      "sha256": "BBA797C8B1D82A99135350DEF28603F19607EE37562AE72D2C7EFBA1717F11D6"
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.31/OmniLock_0.0.31_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2NtbUFtZk81aFAxTFFGUjZBZ21MNitEQXVYa1gwTUhtV0c1N1R3dGhYWlZ5dTVxelJodHZsRjdMRzlGaUY2dHdQOVJMUGVjMWRXTmphSGtPVlRTa3c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzI0MjM2CWZpbGU6T21uaUxvY2tfMC4wLjMxX3g2NC1zZXR1cC5leGUKejRJbEQzYXJabnZxdnBQV0hTMm82S2laQndRdWd5RUhwaTZ5Mkhyc0crcTlFMFE0d04vNENmVk1qODk3NnZCNEwrbkFKM3JTZk5uSUZBU0IvVFBWQ2c9PQo=",
+      "sha256": "9F593D4CFC60BFF7D0616B5F6A923743FE593AFE45FC317377B3DD5CED0EDB55"
     }
   }
 }
