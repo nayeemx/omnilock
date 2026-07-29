@@ -101,7 +101,30 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
     unsafe {
         let path_wide = to_wide(path);
 
-        let (existing_dacl, sd) = get_current_dacl(path_wide.as_ptr())?;
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let ret = GetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut sd,
+        );
+        if ret != 0 {
+            return Err(format!("GetNamedSecurityInfo failed: {}", ret));
+        }
+
+        let mut dacl_present: i32 = 0;
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let mut dacl_defaulted: i32 = 0;
+        GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
+
+        if dacl_present == 0 || dacl.is_null() {
+            LocalFree(sd);
+            return Ok(());
+        }
 
         let mut everyone_sid: PSID = std::ptr::null_mut();
         let everyone_sid_str = to_wide("S-1-1-0");
@@ -110,22 +133,38 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
             return Err(format!("ConvertStringSidToSid failed: {}", std::io::Error::last_os_error()));
         }
 
-        let mut remove_ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
-        remove_ea.grfAccessPermissions = GENERIC_ALL;
-        remove_ea.grfAccessMode = REVOKE_ACCESS;
-        remove_ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-        remove_ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-        remove_ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-        remove_ea.Trustee.ptstrName = everyone_sid as *mut u16;
+        let mut count: u32 = 0;
+        let mut entries: *mut EXPLICIT_ACCESS_W = std::ptr::null_mut();
+        let ret = GetExplicitEntriesFromAclW(dacl, &mut count, &mut entries);
+        if ret != 0 {
+            LocalFree(everyone_sid as *mut _);
+            LocalFree(sd);
+            return Err(format!("GetExplicitEntriesFromAclW failed: {}", ret));
+        }
 
-        let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = SetEntriesInAclW(1, &mut remove_ea, existing_dacl, &mut new_dacl);
+        let mut filtered: Vec<EXPLICIT_ACCESS_W> = Vec::new();
+        for i in 0..count {
+            let entry = &*entries.add(i as usize);
+            let is_deny_everyone = entry.grfAccessMode == DENY_ACCESS
+                && EqualSid(entry.Trustee.ptstrName as PSID, everyone_sid) != 0;
+            if !is_deny_everyone {
+                filtered.push(*entry);
+            }
+        }
 
+        LocalFree(entries as *mut _);
         LocalFree(everyone_sid as *mut _);
 
+        let mut new_dacl: *mut ACL = std::ptr::null_mut();
+        let ret = SetEntriesInAclW(
+            filtered.len() as u32,
+            if filtered.is_empty() { std::ptr::null_mut() } else { filtered.as_mut_ptr() },
+            std::ptr::null_mut(),
+            &mut new_dacl,
+        );
         if ret != 0 {
             LocalFree(sd);
-            return Err(format!("SetEntriesInAcl (revoke) failed: {}", ret));
+            return Err(format!("SetEntriesInAcl failed: {}", ret));
         }
 
         let ret = SetNamedSecurityInfoW(
@@ -142,7 +181,7 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
         LocalFree(sd);
 
         if ret != 0 {
-            return Err(format!("SetNamedSecurityInfo (revoke) failed: err={}", ret));
+            return Err(format!("SetNamedSecurityInfo failed: err={}", ret));
         }
         Ok(())
     }

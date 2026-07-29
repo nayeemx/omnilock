@@ -16,9 +16,9 @@ export function Sidebar({ tab, setTab, config, onLogout }: { tab: TabId; setTab:
   const [watchdog, setWatchdog] = useState<WatchdogStatusDto | null>(null);
 
   useEffect(() => {
-    getWatchdogStatus().then(setWatchdog).catch(() => {});
+    getWatchdogStatus().then(setWatchdog).catch(console.error);
     const interval = setInterval(() => {
-      getWatchdogStatus().then(setWatchdog).catch(() => {});
+      getWatchdogStatus().then(setWatchdog).catch(console.error);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -55,7 +55,7 @@ export function Sidebar({ tab, setTab, config, onLogout }: { tab: TabId; setTab:
       </nav>
 
       <div className="mt-auto">
-        <button onClick={async () => { await lockNow(); onLogout(); }}
+        <button onClick={async () => { try { await lockNow(); } catch (e) { console.error("lockNow failed:", e); } onLogout(); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:bg-surface border border-transparent transition-all mb-2">
           <LogOut className="w-4 h-4" />
           <span className="flex-1 text-left">Lock & Logout</span>

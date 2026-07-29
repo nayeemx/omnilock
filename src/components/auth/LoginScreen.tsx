@@ -63,7 +63,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
       setResetQuestion(q);
       setResetMode("question");
     } catch (e: any) {
-      setResetError(e);
+      setResetError(String(e));
     } finally {
       setResetLoading(false);
     }
@@ -93,7 +93,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
       await resetPassword(resetNewPw, resetAnswer);
       setResetSuccess(true);
     } catch (e: any) {
-      setResetError(e);
+      setResetError(String(e));
     } finally {
       setResetLoading(false);
     }
@@ -123,7 +123,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
       await recoverWithKey(resetNewPw, resetRecoveryKey);
       setResetSuccess(true);
     } catch (e: any) {
-      setResetError(e);
+      setResetError(String(e));
     } finally {
       setResetLoading(false);
     }
@@ -153,7 +153,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
       await recoverWithUsbKey(resetNewPw);
       setResetSuccess(true);
     } catch (e: any) {
-      setResetError(e);
+      setResetError(String(e));
     } finally {
       setResetLoading(false);
     }
@@ -211,7 +211,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
       await unlockSession({ master_password: password, totp_code: totpCode });
       await onUnlock();
     } catch (e: any) {
-      setError(e);
+      setError(String(e));
     } finally {
       setLoading(false);
     }

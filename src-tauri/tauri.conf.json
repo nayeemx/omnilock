@@ -46,7 +46,10 @@
       "icons/128x128.png",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": [
+      "resources/omnilock-svc.exe",
+      "resources/omnilock-monitor.exe"
+    ],
     "copyright": "Copyright © 2025-2026 InnologyBD. All rights reserved.",
     "shortDescription": "OmniLock - Enterprise Desktop Security by InnologyBD",
     "longDescription": "Zero-trust enterprise desktop security tool. Application, folder, file & drive locker with Argon2id, AES-256-GCM, TOTP 2FA, and dual-process watchdog. Windows 10/11.",

@@ -43,7 +43,7 @@ export default function App() {
     if (!widgetMode) {
       getVaultStatus().then(setVaultStatus).catch(console.error);
       githubGetStatus().then(setGithubStatus).catch(console.error);
-      hasBiometricToken().then(setHasBiometric).catch(() => {});
+      hasBiometricToken().then(setHasBiometric).catch(console.error);
     }
   }, [widgetMode]);
 
@@ -72,7 +72,9 @@ export default function App() {
   const handleLockNow = useCallback(async () => {
     try {
       await lockNow();
-    } catch {}
+    } catch (e) {
+      console.error("lockNow failed:", e);
+    }
     const status = await getVaultStatus();
     setVaultStatus(status);
     setIsUnlocked(false);

@@ -1092,7 +1092,7 @@ fn cmd_toggle_biometric(state: State<'_, AppState>, enabled: bool, password: Opt
 }
 
 #[tauri::command]
-async fn cmd_biometric_login(state: State<'_, AppState>) -> Result<(), String> {
+async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     logger::log("BIOMETRIC", "biometric_login start");
     let password = match biometric::load_biometric_token() {
         Ok(pw) => {
@@ -1120,6 +1120,8 @@ async fn cmd_biometric_login(state: State<'_, AppState>) -> Result<(), String> {
         *password_guard = Some(password);
     }
     process_guard::update_locked_apps(config.locked_apps.clone());
+    process_guard::start_process_monitor(app.clone());
+    auto_lock::start_auto_lock_monitor();
     logger::log("BIOMETRIC", "biometric_login ok");
     Ok(())
 }
@@ -1287,6 +1289,29 @@ pub fn run() {
             .always_on_top(true)
             .visible(false)
             .build();
+
+            // Auto-start service daemon if not running
+            if !service_client::is_service_running() {
+                logger::log("SERVICE", "service not running, attempting to start it");
+                // Try standalone mode
+                let svc_path = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join("omnilock-svc.exe")))
+                    .filter(|p| p.exists());
+                if let Some(path) = svc_path {
+                    match std::process::Command::new(&path)
+                        .arg("--standalone")
+                        .spawn()
+                    {
+                        Ok(_) => logger::log("SERVICE", "service started in standalone mode"),
+                        Err(e) => logger::log("SERVICE", &format!("failed to start service: {}", e)),
+                    }
+                } else {
+                    logger::log("SERVICE", "omnilock-svc.exe not found, skipping service start");
+                }
+            } else {
+                logger::log("SERVICE", "service already running");
+            }
 
             panic_hotkey::start_hotkey_listener();
             watchdog::start_watchdog();

@@ -20,13 +20,25 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
+      - name: Rust cache (app)
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
+      - name: Rust cache (service)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: service
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Build service daemon
+        run: |
+          cargo build --release --manifest-path service/Cargo.toml
+          mkdir -p src-tauri/resources
+          copy service\target\release\omnilock-svc.exe src-tauri\resources\
+          copy service\target\release\omnilock-monitor.exe src-tauri\resources\
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
