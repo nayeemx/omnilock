@@ -1,6 +1,6 @@
 [package]
 name = "omnilock-shared"
-version = "0.0.27"
+version = "0.0.28"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"
 description = "OmniLock Shared - Pipe protocol types"
