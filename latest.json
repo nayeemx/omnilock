@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-07-29T11:24:08Z",
-  "version": "v0.0.31",
-  "notes": "Fix v2: SeTakeOwnershipPrivilege now enabled before SetNamedSecurityInfoW(OWNER) so rescue mode actually works. Previous v0.0.30 fix was incomplete — ownership change still failed with ACCESS_DENIED.",
+  "pub_date": "2026-07-29T12:00:23Z",
+  "version": "v0.0.32",
+  "notes": "Fix v3: Rescue mode now notifies the service to stop re-applying DENY ACEs (prevents the service from re-locking the folder 15s later). New ForceRemoveLockedItem protocol command. NSIS installer kills running omnilock-svc.exe before overwriting.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.31/OmniLock_0.0.31_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1NtK05tQ2t5STF3UXAxNUdZNStFLzdLWXBjME52RUx2SkhvUkc1V1RVQjBNQnArYjBpaXppVi9rSG1jY2tocVcxL3ZrNEFKNis2QjBLZHowZzYrN2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzI1MDUwCWZpbGU6T21uaUxvY2tfMC4wLjMxX3g2NC1zZXR1cC5leGUKV0VKL1QwWC9GeDRsaVV1a1BtWWlZS0QrSXZqQmZ5SU1FUXdLY2RWRzVXdmo4bVBaTUUrV1RWUjFwL1hUV0xYK0hVNWx0bUp3S2pyNXp5bnNiVmx6Q3c9PQo=",
-      "sha256": "23F5EA0B1DE5C6FA6E4A09E5C2EC832C6A1D8B89EC2CF2644784BD82D3ADC4BD"
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.32/OmniLock_0.0.32_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1M5K0x0cmhqaTBMd1Uvb2QzMFRhQmJyenBvSTdNcTN4a0NSNDBNc1o5NEF1V1FvMXJUS1M4TEd3THQyUlFZS2ErN21ZbjczMUMrVHBCcGVIRWFVM0FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzI2NDA3CWZpbGU6T21uaUxvY2tfMC4wLjMyX3g2NC1zZXR1cC5leGUKTlI1YzNKcS9ZVk1ZKytCTmI4R1VpNk5qdE5jM21YWkRyTTA5dXJicHdJVVJ5TGF5bjZyK0FBbStSQ3UxV1hvQUMrKzlCdTkxZ2Q0aEdScnBTVlNGQkE9PQo=",
+      "sha256": "3BC775E2D958A21C63EDB017E38D3E73F82815EA9A81D2950CC3BF2E44C441B4"
     }
   }
 }

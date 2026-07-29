@@ -20,6 +20,7 @@ pub enum SvcRequest {
     LockDrive { drive_letter: String, display_name: String },
     LockApp { name: String, path: String, display_name: String },
     UnlockItem { path: String, password: String },
+    ForceRemoveLockedItem { path: String },
     SyncVault { vault_data: Vec<u8> },
     Shutdown,
 }

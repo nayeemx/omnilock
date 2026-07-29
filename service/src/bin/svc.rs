@@ -336,6 +336,15 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
             SvcResponse::Ok { message: format!("Unlocked: {}", path) }
         }
 
+        SvcRequest::ForceRemoveLockedItem { path } => {
+            log(&format!("ForceRemoveLockedItem: {}", path));
+            let _ = acl::remove_lock(&path);
+            let mut s = locked.lock().unwrap();
+            s.locked_items.retain(|i| i.path != path);
+            let _ = state::save_state(&s);
+            SvcResponse::Ok { message: format!("Force removed: {}", path) }
+        }
+
         SvcRequest::SyncVault { vault_data } => {
             let vault_path = state::vault_path_programdata();
             if let Err(e) = std::fs::write(&vault_path, &vault_data) {

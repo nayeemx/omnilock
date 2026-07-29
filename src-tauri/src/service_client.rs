@@ -100,6 +100,12 @@ pub fn notify_unlock_item(path: &str, password: &str) {
     });
 }
 
+pub fn notify_force_remove_locked_item(path: &str) {
+    let _ = pipe_request(&SvcRequest::ForceRemoveLockedItem {
+        path: path.to_string(),
+    });
+}
+
 pub fn sync_vault_to_service(vault_data: &[u8]) {
     let _ = pipe_request(&SvcRequest::SyncVault {
         vault_data: vault_data.to_vec(),

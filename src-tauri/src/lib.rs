@@ -415,6 +415,9 @@ fn cmd_rescue_unlock(path: String) -> Result<String, String> {
     if still_locked {
         return Ok("failed".to_string());
     }
+    // Notify service to stop re-applying the lock
+    service_client::notify_force_remove_locked_item(&path);
+    logger::log("RESCUE", &format!("rescue_unlock notified service: {}", path));
     Ok("rescued".to_string())
 }
 
