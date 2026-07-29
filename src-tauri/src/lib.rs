@@ -1209,23 +1209,39 @@ pub fn run() {
             cmd_has_biometric_token,
             cmd_get_diagnostics,
         ])
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            #[cfg(desktop)]
-            {
-                app.handle().plugin(tauri_plugin_updater::Builder::new().build()).ok();
-            }
+            logger::log("SETUP", "setup hook started");
 
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
             use tauri::menu::{Menu, MenuItem};
 
-            let show_item = MenuItem::with_id(app, "show", "Show OmniLock", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let show_item = match MenuItem::with_id(app, "show", "Show OmniLock", true, None::<&str>) {
+                Ok(item) => item,
+                Err(e) => { logger::log("SETUP", &format!("menu item error: {}", e)); return Ok(()); }
+            };
+            let quit_item = match MenuItem::with_id(app, "quit", "Quit", true, None::<&str>) {
+                Ok(item) => item,
+                Err(e) => { logger::log("SETUP", &format!("quit item error: {}", e)); return Ok(()); }
+            };
+            let menu = match Menu::with_items(app, &[&show_item, &quit_item]) {
+                Ok(m) => m,
+                Err(e) => { logger::log("SETUP", &format!("menu error: {}", e)); return Ok(()); }
+            };
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let icon = app.default_window_icon().cloned();
+            let tray_builder = TrayIconBuilder::new()
                 .tooltip("OmniLock - Enterprise Desktop Security")
-                .menu(&menu)
+                .menu(&menu);
+
+            let tray_builder = if let Some(ic) = &icon {
+                tray_builder.icon(ic.clone())
+            } else {
+                logger::log("SETUP", "no default icon, creating tray without icon");
+                tray_builder
+            };
+
+            let _tray = match tray_builder
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
                         "show" => {
@@ -1253,7 +1269,11 @@ pub fn run() {
                         }
                     }
                 })
-                .build(app)?;
+                .build(app)
+            {
+                Ok(t) => t,
+                Err(e) => { logger::log("SETUP", &format!("tray build error: {}", e)); return Ok(()); }
+            };
 
             let _widget = tauri::WebviewWindowBuilder::new(
                 app,
@@ -1270,6 +1290,7 @@ pub fn run() {
 
             panic_hotkey::start_hotkey_listener();
             watchdog::start_watchdog();
+            logger::log("SETUP", "setup hook complete");
             Ok(())
         })
         .on_window_event(|window, event| {
