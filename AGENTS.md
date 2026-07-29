@@ -4,7 +4,7 @@
 
 ## Current State
 
-- **Version**: 0.0.30 (unreleased, ownership-based rescue fix)
+- **Version**: 0.0.31 (unreleased, ownership-based rescue fix v2 — enable SeTakeOwnershipPrivilege)
 - **Last Updated**: 2026-07-29
 - **Git**: working on main, uncommitted fixes
 
