@@ -4,123 +4,32 @@
 
 ## Current State
 
-- **Version**: 0.0.26 (latest release: https://github.com/nayeemx/omnilock/releases/tag/v0.0.26)
-- **Last Updated**: 2026-07-28
-- **Git**: clean, all changes committed on `main`
-- **Build**: signed v0.0.26 installed at https://github.com/nayeemx/omnilock/releases/tag/v0.0.26
+- **Version**: 0.0.29 (unreleased, fix for window-not-appearing root cause found)
+- **Last Updated**: 2026-07-29
+- **Git**: working on main, committing deadlock fix
 
 ---
 
-## What Was Just Done (v0.0.22 → v0.0.23)
+## ROOT CAUSE: Window Not Appearing Since v0.0.25
 
-1. **Fix unlock ACL removal** — Replaced broken `REVOKE_ACCESS` with proper DACL filtering. Now reads existing ACEs, filters out DENY ACEs for Everyone, rebuilds DACL without them.
-2. **Unlock verification** — Unlock commands now return "unlocked" or "unlock_failed". UI shows error if ACL still present after unlock.
-3. **Open-Meteo weather API** — Replaced wttr.in with Open-Meteo for better accuracy. Uses WMO weather codes, IP geolocation fallback, proper geocoding for city names.
+**Bug**: `logger::init()` in `logger.rs` deadlocks immediately at startup.
 
----
+**Why**: `init()` locks `LOG_FILE` mutex, then calls `log()` which tries to lock the **same non-reentrant `std::sync::Mutex`** — Rust's `Mutex` is not reentrant, so the thread hangs forever.
 
-## What Was Just Done (v0.0.21 → v0.0.22)
+**Result**: Process starts (4 threads, ~8-9 MB), but never reaches Tauri's `.run()` — no window, 0-byte log file. Silent hang.
 
-1. **Lock verification** — Added `verify_lock()` that reads DACL back and checks for DENY ACE. Lock commands return "locked" or "locked_unverified".
-2. **VaultPage verification UI** — Shows "locked & verified" or "locked_unverified (may require admin)" after locking.
+**Fixed in v0.0.29**: `drop(guard)` before `init()` returns, so `log()` can acquire the lock fresh. No `log()` call inside `init()`.
 
----
-
-## What Was Just Done (v0.0.20 → v0.0.21)
-
-1. **ACL enforcement moved to app** — Replaced broken service pipe with direct Win32 `SetNamedSecurityInfoW` in `file_locker.rs`. Added `apply_deny_acl()` and `remove_deny_acl()`.
-2. **Biometric detection rewritten** — Replaced unreliable WinRT with registry + WbioSrvc service checks.
-3. **Honest audit in AGENTS.md** — Separated "Proven Working" from "Has Code But ZERO Verification".
+**All versions from v0.0.25 through v0.0.28 are broken** by this deadlock.
 
 ---
 
-## What Was Just Done (v0.0.24 → v0.0.25)
+## What Was Just Done (v0.0.28 → v0.0.29)
 
-1. **Diagnostics system** — New `logger.rs` writes timestamped logs to `%APPDATA%/InnologyBD/OmniLock/omnilock.log` for all lock/unlock/biometric/drive operations. New `diagnostics.rs` reads real ACL state, biometric status, service status for every locked item.
-2. **DiagnosticsPage UI** — New sidebar page showing live health checks for each feature: ACL DENY presence, biometric hardware/token/service, guardian daemon status, drive lock state, and the full operation log tail.
-3. **Logging integrated** — All 10+ lock/unlock/biometric/drive commands now log success/failure with error details before returning.
-4. **Biometric fix confirmed** — `powershell51_path()` fix plus explicit WinRT `ContentType=WindowsRuntime` type loading. CI builds and signs correctly.
-5. **v0.0.25 released** — Signed installer at https://github.com/nayeemx/omnilock/releases/tag/v0.0.25, auto-update `latest.json` updated.
-
----
-
-1. **Auto-updater endpoint fix** — Switched `tauri.conf.json` updater endpoint from `nayeemx.github.io/omnilock/latest.json` (unreachable due to network/firewall blocking GitHub Pages CDN) to `raw.githubusercontent.com/nayeemx/omnilock/main/latest.json`.
-2. **Auto-updater error handling fix** — `checkForUpdates()` in `tauri-bridge.ts` now throws on error instead of returning `null`. UI shows "Failed to check for updates: ..." instead of misleading "No updates available."
-3. **v0.0.26 released** — Signed installer at https://github.com/nayeemx/omnilock/releases/tag/v0.0.26, auto-update `latest.json` updated.
-
----
-
-## What Was Just Done (v0.0.24 → v0.0.25)
-
-1. **Widget close button** — Added X close button and Cancel button to UnlockWidget. Escape key closes widget. Auto-closes after successful unlock.
-2. **GitHub Connect fix** — `poll_for_token` now saves `sync.meta.json` after getting token, so `get_sync_status()` returns `connected: true`. UI correctly shows "Active" badge after Device Flow auth.
-3. **App Locker scan fix** — "Add Application" button no longer redundantly clears and re-scans. Search field cleared on modal open.
-4. **Vault search** — Added search input to Protected Paths section in File & Drive Vault page. Filters both locked folders and files.
-
----
-
-## What Was Just Done (v0.1.4 → v0.1.5)
-
-1. **System Monitor page** — Real-time CPU, RAM, GPU, Network stats with live SVG graphs. CPU usage ring gauge, RAM usage ring gauge, GPU info via PowerShell WMI, network upload/download rates. Auto-refreshes every 2 seconds.
-2. **Dashboard page** — New sidebar page showing weather widget (via wttr.in API), protected items count, security status (2FA/cloud sync), quick CPU/RAM status, locked drives list. Default landing page.
-3. **New sidebar navigation** — Dashboard and System Monitor added as first two sidebar items.
-
----
-
-## What Was Just Done (v0.1.3 → v0.1.4)
-
-1. **GitHub connect state fix** — After Device Flow auth, `cloud_sync_enabled` is now set in vault config. UI correctly shows "Active" badge.
-2. **App Locker search fix** — Main page search now filters locked apps list (was filtering processes instead). Separate search state for locked apps vs scan modal.
-3. **Installed apps scan** — App Locker now enumerates installed apps from Windows registry (not just running processes). Tab UI: Running vs Installed.
-4. **Lock operation loaders** — Spinner animations on lock, toggle, remove operations so user sees progress.
-5. **File picker** — Add Folder and Lock File now use native OS file picker dialog (no manual path typing).
-6. **Backup/Restore** — Export vault to any folder, import from backup on reinstall. Exports vault.enc, vault.recovery, vault.meta, locked_items.json.
-
----
-
-## What Was Just Done (v0.1.2 → v0.1.3)
-
-1. **GitHub Cloud Sync** — Replaced placeholder OAuth client ID with real one (`Ov23li9jwqq1jy88qziH`). Device Flow enabled. Users can now connect their GitHub account to backup/restore encrypted vault via Gists.
-
----
-
-## What Was Just Done (v0.1.1 → v0.1.2)
-
-1. **Icon consistency fix** — App dashboard, login screen, setup wizard, loading screen all now use `icon.png` (same file as Windows taskbar icon). Replaced Lucide `Shield` SVG with `<img src="/icon.png">`. Copied `src-tauri/icons/icon.png` to `public/icon.png`.
-
-2. **Light theme** (v0.1.1) — System `prefers-color-scheme` auto-detection, light oklch CSS variables, semantic `surface` tokens replacing hardcoded `bg-white/[0.04]`, light scrollbars.
-
-3. **Auto-updater signature fix** — `latest.json` has correct Ed25519 signature for v0.1.2. Signing key recovered and backed up.
-
----
-
-## What Works (Proven)
-
-| Feature | Status | Evidence |
-|---------|--------|----------|
-| Rust compiles | ✅ | 0 errors on every build |
-| TypeScript compiles | ✅ | 0 errors on every build |
-| Installer builds | ✅ | `OmniLock_0.0.25_x64-setup.exe` produced |
-| Vault crypto (unit tests) | ✅ | 15 `#[test]` in vault.rs, 2 in totp.rs |
-
-## What Has Code But ZERO Verification
-
-| Feature | Status | Evidence |
-|---------|--------|----------|
-| ACL enforcement (core!) | ⚠️ Code written | No test that deny ACE actually applies |
-| Pipe IPC | ⚠️ Code written | "7/7 tests" claimed but no test script exists |
-| Widget unlock | ⚠️ Code written | Explicitly never tested end-to-end |
-| GitHub Connect | ⚠️ Code written | Explicitly never tested |
-| UI lock/unlock | ⚠️ Code written | Never tested from GUI |
-| Weather widget | ⚠️ Code written | Never verified on real machine |
-| Windows Hello biometric | ⚠️ Code written | Never verified — DPAPI fix not yet tested |
-| Hidden console windows | ⚠️ Code written | Just added `CREATE_NO_WINDOW`, not yet tested |
-| Backup/Restore | ⚠️ Code written | Never tested end-to-end |
-| Reinstall persistence | ⚠️ Code written | Never tested |
-
-## Diagnostics page added — first step
-
-The new Diagnostics page now shows real ACL state, biometric status, and the full operation log. Use it before claiming any fix works. Log file at `%APPDATA%/InnologyBD/OmniLock/omnilock.log`.
+1. **Deadlock fix in `logger.rs`** — `logger::init()` no longer calls `log()` while holding the mutex. This was causing v0.0.25+ to silently hang at startup with no window and a 0-byte log file.
+2. **Removed diagnostic MessageBoxW** — The 3 debugging dialogs added in v0.0.28 are no longer needed since root cause is confirmed.
+3. **Fallback updater endpoints** — Added `nayeemx.github.io/omnilock/latest.json` as a secondary endpoint after the primary `raw.githubusercontent.com` endpoint. If one is blocked by firewall, the other still works.
+4. **Version bumped** to v0.0.29.
 
 ---
 
@@ -128,6 +37,7 @@ The new Diagnostics page now shows real ACL state, biometric status, and the ful
 
 | Error | Root Cause | Fix |
 |-------|-----------|-----|
+| App window not appearing (v0.0.25+) | `logger::init()` deadlocks on non-reentrant `Mutex` | `drop(guard)` before `log()` call in `init()`, or write directly |
 | All pipe responses fail deser | `SvcResponse` had `#[serde(tag = "type")]` on client, no tag on service | Removed tag in `service_client.rs` |
 | icacls /deny silently fails | CLI reports success but never applies deny ACE | Rewrote `acl.rs` to use Win32 `SetNamedSecurityInfoW` API |
 | Widget unlock doesn't remove ACL | Widget updated vault but never called `notify_unlock_item()` | Added service notification calls in `cmd_widget_unlock` |
@@ -213,7 +123,9 @@ omnilock/
 │       ├── file_locker.rs     # Path validation (ACL delegated to service)
 │       ├── drive_locker.rs    # NoDrives registry + ACL delegated
 │       ├── process_guard.rs   # Process monitor + suspension
-│       └── system_monitor.rs  # CPU/RAM/GPU/Network stats + weather
+│       ├── system_monitor.rs  # CPU/RAM/GPU/Network stats + weather
+│       ├── logger.rs          # Timestamped operation logger
+│       └── diagnostics.rs     # Live health checks for ACL/biometric/service
 ├── service/              # Windows service (ACL enforcement daemon)
 │   └── src/
 │       ├── bin/svc.rs    # Main service (named pipe server)
@@ -235,21 +147,21 @@ Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
 
 ## Version History
 
-- **0.0.15** — Versioning reset. Widget close, GitHub Connect fix, App Locker fix, Vault search, System Monitor, Dashboard
-- **0.1.5** — System Monitor (CPU/RAM/GPU/Network graphs) + Dashboard (weather widget, security overview)
-- **0.1.4** — GitHub connect state fix, App Locker search, installed apps scan, lock loaders, file picker, backup/restore
-- **0.1.3** — GitHub Cloud Sync (real OAuth App with Device Flow)
-- **0.1.2** — Icon consistency (same icon.png in taskbar + dashboard)
-- **0.1.1** — Light theme + system preference detection
-- **0.1.0** — Widget ACL fix, vault tests, shared crate, service fixes
-- **0.0.8** — New icon, 16 bug fixes, floating widget, system tray
-- **0.0.7** — Complete UI overhaul, dark glassmorphism, 18 modular files
-- **0.0.6** — Recovery methods + USB key + forgot password
-- **0.0.5** — Auto-update NSIS, keypair, 2FA + password reuse
-- **0.0.4** — Signing key fix, 2FA login fix
-- **0.0.3** — latest.json for updater
-- **0.0.2** — Machine-bound USB key, dynamic security
-- **0.0.1** — Panic hotkey, auto-lock, USB hardware key, recovery tiers
+- **0.0.29** — Deadlock fix: `logger::init()` no longer deadlocks on non-reentrant `Mutex`. Fallback updater endpoints. Removed debug MessageBoxW.
+- **0.0.28** — Added startup MessageBoxW for diagnostics. (Same deadlock bug, never produced working window.)
+- **0.0.27** — Setup hook always returns `Ok(())`, no unwrap/panic, step logging. (Same deadlock bug.)
+- **0.0.26** — Switched updater endpoint to `raw.githubusercontent.com`. Fixed `checkForUpdates()` error handling.
+- **0.0.25** — Added diagnostics system + `logger.rs`. (INTRODUCED THE DEADLOCK — window stopped appearing.)
+- **0.0.24** — Rescue mode, biometric fix, weather switch.
+- **0.0.23** — Fix unlock ACL removal, Open-Meteo weather API.
+- **0.0.22** — Lock verification.
+- **0.0.21** — ACL enforcement moved to app, biometric rewrite.
+- **0.0.20** — Hidden console windows, vault unlock fix, logout button.
+- **0.0.19** — Improved biometric detection.
+- **0.0.18** — Windows Hello fingerprint login + weather city search.
+- **0.0.17** — Weather search by city name.
+- **0.0.16** — Fix system monitor UI freeze.
+- **0.0.15** — Versioning reset.
 
 ---
 
@@ -262,4 +174,4 @@ Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
 5. If the user reports an error, check the "Known Errors & Fixes" table above
 6. When done, update this file before finishing
 7. Follow `design.md` for any UI work
-8. Version numbering: sequential patch bumps (0.1.0 → 0.1.1 → 0.1.2 → ...)
+8. Version numbering: sequential patch bumps (0.0.29 → 0.0.30 → ...)

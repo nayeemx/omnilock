@@ -1136,27 +1136,7 @@ fn cmd_get_diagnostics() -> diagnostics::Diagnostics {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(target_os = "windows")]
-    unsafe {
-        let _ = windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
-            std::ptr::null_mut(),
-            windows_sys::core::w!("OmniLock v0.0.28 starting...\nlogger::init() will run next"),
-            windows_sys::core::w!("OmniLock Startup"),
-            0x00000040, // MB_ICONINFORMATION
-        );
-    }
-
     logger::init();
-
-    #[cfg(target_os = "windows")]
-    unsafe {
-        let _ = windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
-            std::ptr::null_mut(),
-            windows_sys::core::w!("OmniLock v0.0.28: logger::init() done.\nNow building Tauri app..."),
-            windows_sys::core::w!("OmniLock Startup"),
-            0x00000040,
-        );
-    }
 
     let app_state = AppState {
         session_token: Mutex::new(None),
@@ -1231,16 +1211,6 @@ pub fn run() {
         ])
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            #[cfg(target_os = "windows")]
-            unsafe {
-                let _ = windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
-                    std::ptr::null_mut(),
-                    windows_sys::core::w!("OmniLock v0.0.28: setup hook started\nBuilding tray..."),
-                    windows_sys::core::w!("OmniLock Startup"),
-                    0x00000040,
-                );
-            }
-
             logger::log("SETUP", "setup hook started");
 
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};

@@ -25,7 +25,7 @@ pub fn init() {
     {
         let mut guard = LOG_FILE.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(file);
-        log("SYSTEM", "OmniLock logger initialized");
+        drop(guard);
     }
 }
 
