@@ -390,8 +390,15 @@ fn cmd_rescue_unlock(path: String) -> Result<String, String> {
         return Err(format!("Path does not exist: {}", path));
     }
 
-    let has_deny = file_locker::verify_lock(&path).unwrap_or(false);
-    logger::log("RESCUE", &format!("rescue_unlock has_deny={} path={}", has_deny, path));
+    let verify_result = file_locker::verify_lock(&path);
+    let has_deny = match &verify_result {
+        Ok(true) => true,
+        // ACCESS_DENIED means the lock is so strict we can't even read — definitely locked
+        Err(e) if e.contains("err=5") || e.contains("err = 5") || e.contains("ACCESS_DENIED") => true,
+        Ok(false) => false,
+        Err(_) => false,
+    };
+    logger::log("RESCUE", &format!("rescue_unlock verify_lock={:?} has_deny={} path={}", verify_result, has_deny, path));
     if !has_deny {
         return Ok("not_locked".to_string());
     }
@@ -1293,17 +1300,22 @@ pub fn run() {
             // Auto-start service daemon if not running
             if !service_client::is_service_running() {
                 logger::log("SERVICE", "service not running, attempting to start it");
-                // Try standalone mode
-                let svc_path = std::env::current_exe()
-                    .ok()
-                    .and_then(|p| p.parent().map(|d| d.join("omnilock-svc.exe")))
-                    .filter(|p| p.exists());
+                // Search multiple locations for the service binary
+                let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+                let search_paths = exe_dir.iter().flat_map(|dir| {
+                    vec![
+                        dir.join("omnilock-svc.exe"),
+                        dir.join("resources").join("omnilock-svc.exe"),
+                        dir.join("_resources").join("omnilock-svc.exe"),
+                    ]
+                });
+                let svc_path = search_paths.filter(|p| p.exists()).next();
                 if let Some(path) = svc_path {
                     match std::process::Command::new(&path)
                         .arg("--standalone")
                         .spawn()
                     {
-                        Ok(_) => logger::log("SERVICE", "service started in standalone mode"),
+                        Ok(_) => logger::log("SERVICE", &format!("service started from: {}", path.display())),
                         Err(e) => logger::log("SERVICE", &format!("failed to start service: {}", e)),
                     }
                 } else {

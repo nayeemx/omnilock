@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-07-29T13:12:42Z",
-  "version": "v0.0.29",
-  "notes": "Fix: app window not appearing (deadlock in logger::init() on non-reentrant Mutex). Also added fallback updater endpoint.",
+  "pub_date": "2026-07-29T11:04:53Z",
+  "version": "v0.0.30",
+  "notes": "Fix: rescue mode now handles ACCESS_DENIED on locked files by taking OWNERSHIP first. Service binary auto-start finds correct path. Drive lock detection reads actual NoDrives DWORD. Biometric reason only shown when hardware unavailable.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.29/OmniLock_0.0.29_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2NjbTF2c2tyM0RyUmF3eHJjT2VjOHNEM1ZXNTBER0Q0ZDAzOGRrMG5QS09YM0ZlODM2MWtZeVBpUHV2V0Y2MWNMZHNpemJwZW5QellvZWFQWk4xWmdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzE0MzA4CWZpbGU6T21uaUxvY2tfMC4wLjI5X3g2NC1zZXR1cC5leGUKeWgvd0VmTjBUT1JaUlpFancvN1ZuNXpneC9BUHJLY2ZFSE1BNnp4MlJWaUFjUjJNc055ei9VSUcwc3BqRlJEY2JPeTlkd2c3bWpKU283TWk4RHFSQnc9PQo=",
-      "sha256": "C2B3DCB6647A3D73A2E2FAF7C6706387A760B23CDEC4F45D75B932A8E1F55720"
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.30/OmniLock_0.0.30_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1d3emk1UHcyM3gwbEdnU3YrRFJRQ0M5c3YzalJsVmN3N1kwSTRxZTByUlVRdzZnaU9BRnFpWU1qNnlVa0lxSEUwUUNtcWpUdVI3cnprRHJMT3JHeUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MzIzMDY0CWZpbGU6T21uaUxvY2tfMC4wLjMwX3g2NC1zZXR1cC5leGUKNDNwM2F3ZnFQSEtxYVNneTdzMUVOR2hmSng5Q08wWVVCMkVaS1doaEhCRzhXaFRMSWI4SkdBWHRybW9UR0lnNmUxSTgzYS9Jc0ZuUmNhbFdDWWRGRGc9PQo=",
+      "sha256": "BBA797C8B1D82A99135350DEF28603F19607EE37562AE72D2C7EFBA1717F11D6"
     }
   }
 }

@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Version**: 0.0.29 (unreleased, fix for window-not-appearing root cause found)
+- **Version**: 0.0.30 (unreleased, ownership-based rescue fix)
 - **Last Updated**: 2026-07-29
-- **Git**: working on main, committing deadlock fix
+- **Git**: working on main, uncommitted fixes
 
 ---
 
@@ -30,6 +30,14 @@
 2. **Removed diagnostic MessageBoxW** — The 3 debugging dialogs added in v0.0.28 are no longer needed since root cause is confirmed.
 3. **Fallback updater endpoints** — Added `nayeemx.github.io/omnilock/latest.json` as a secondary endpoint after the primary `raw.githubusercontent.com` endpoint. If one is blocked by firewall, the other still works.
 4. **Version bumped** to v0.0.29.
+5. **Rescue mode & ACL ownership fix in `file_locker.rs`** — When a DENY Everyone ACE is so restrictive that `GetNamedSecurityInfoW` returns ACCESS_DENIED (err=5), the code now:
+   - Calls `SetNamedSecurityInfoW(OWNER_SECURITY_INFORMATION)` to take ownership first
+   - Then retries reading the DACL
+   - When all original ACEs were DENY Everyone (filtered list empty), creates ALLOW ACEs for current user + Administrators instead of an empty DACL
+6. **Service binary path fix in `lib.rs`** — Now searches 3 locations: alongside exe, `resources/`, `_resources/` (Tauri 2 dev convention)
+7. **Service binary built** — `omnilock-svc.exe` and `omnilock-monitor.exe` compiled and placed in `src-tauri/resources/`
+8. **Drive lock detection fix in `diagnostics.rs`** — Parses actual `NoDrives` DWORD hex value instead of checking if key name exists in `reg query` output (was showing all drives as "Locked" when `NoDrives=0`)
+9. **Biometric reason display fix in `DiagnosticsPage.tsx`** — `reason` text now only shown when hardware is NOT available, avoiding confusion (e.g., "Windows Biometric Service is not running" while showing green checkmarks)
 
 ---
 

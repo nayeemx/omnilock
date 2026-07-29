@@ -123,21 +123,38 @@ fn check_service() -> ServiceCheck {
     }
 }
 
+fn get_nodrives_mask() -> u32 {
+    let out = crate::hidden_cmd("reg")
+        .args(["query", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "/v", "NoDrives"])
+        .output();
+    match out {
+        Ok(o) => {
+            let s = String::from_utf8_lossy(&o.stdout);
+            // Parse hex value from reg query output:
+            //   "    NoDrives    REG_DWORD    0x123"
+            if let Some(hex_part) = s.split("REG_DWORD").nth(1) {
+                let trimmed = hex_part.trim();
+                if let Some(rest) = trimmed.strip_prefix("0x") {
+                    u32::from_str_radix(rest.trim(), 16).unwrap_or(0)
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        }
+        Err(_) => 0,
+    }
+}
+
 fn check_drives() -> Vec<DriveCheck> {
     let mut checks = Vec::new();
+    let mask = get_nodrives_mask();
     for letter in 'C'..='Z' {
         let path = format!("{}:\\", letter);
         if std::path::Path::new(&path).exists() {
-            let out = crate::hidden_cmd("reg")
-                .args(["query", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "/v", "NoDrives"])
-                .output();
-            let policy_active = match out {
-                Ok(o) => {
-                    let s = String::from_utf8_lossy(&o.stdout).to_string();
-                    s.contains("NoDrives")
-                }
-                Err(_) => false,
-            };
+            let bit = 1u32 << (letter as u32 - 'A' as u32);
+            let policy_active = (mask & bit) != 0;
             checks.push(DriveCheck {
                 drive_letter: letter.to_string(),
                 policy_active,

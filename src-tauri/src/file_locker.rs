@@ -2,11 +2,52 @@ use std::path::Path;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Security::*;
 use windows_sys::Win32::Security::Authorization::*;
+use windows_sys::Win32::System::Threading::*;
 
 fn to_wide(s: &str) -> Vec<u16> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+}
+
+fn is_access_denied(ret: u32) -> bool {
+    ret == ERROR_ACCESS_DENIED
+}
+
+fn current_user_sid_buf() -> Result<Vec<u8>, String> {
+    unsafe {
+        let mut h_token = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut h_token) == 0 {
+            return Err("OpenProcessToken failed".to_string());
+        }
+        let mut len: u32 = 0;
+        GetTokenInformation(h_token, TokenUser, std::ptr::null_mut(), 0, &mut len);
+        let mut buf = vec![0u8; len as usize];
+        if GetTokenInformation(h_token, TokenUser, buf.as_mut_ptr() as _, len, &mut len) == 0 {
+            CloseHandle(h_token);
+            return Err("GetTokenInformation failed".to_string());
+        }
+        CloseHandle(h_token);
+        Ok(buf)
+    }
+}
+
+unsafe fn take_ownership(path_w: *const u16) -> Result<(), String> {
+    let buf = current_user_sid_buf()?;
+    let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+    let ret = SetNamedSecurityInfoW(
+        path_w as _,
+        SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION,
+        token_user.User.Sid,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+    );
+    if ret != 0 {
+        return Err(format!("SetNamedSecurityInfo(OWNER) failed: err={}", ret));
+    }
+    Ok(())
 }
 
 unsafe fn get_current_dacl(path_w: *const u16) -> Result<(*mut ACL, PSECURITY_DESCRIPTOR), String> {
@@ -22,7 +63,25 @@ unsafe fn get_current_dacl(path_w: *const u16) -> Result<(*mut ACL, PSECURITY_DE
         &mut sd,
     );
     if ret != 0 {
-        return Err(format!("GetNamedSecurityInfo failed: err={}", ret));
+        // If access is denied, try taking ownership and retry once
+        if is_access_denied(ret) {
+            take_ownership(path_w)?;
+            let ret2 = GetNamedSecurityInfoW(
+                path_w,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut sd,
+            );
+            if ret2 != 0 {
+                return Err(format!("GetNamedSecurityInfo failed: err={} (after take ownership)", ret2));
+            }
+        } else {
+            return Err(format!("GetNamedSecurityInfo failed: err={}", ret));
+        }
     }
 
     let mut dacl_present: i32 = 0;
@@ -112,7 +171,24 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
             std::ptr::null_mut(),
             &mut sd,
         );
-        if ret != 0 {
+
+        if is_access_denied(ret) {
+            // DENY Everyone blocks reading — take ownership first
+            take_ownership(path_wide.as_ptr())?;
+            let ret2 = GetNamedSecurityInfoW(
+                path_wide.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut sd,
+            );
+            if ret2 != 0 {
+                return Err(format!("GetNamedSecurityInfo failed: err={} (after take ownership)", ret2));
+            }
+        } else if ret != 0 {
             return Err(format!("GetNamedSecurityInfo failed: {}", ret));
         }
 
@@ -156,12 +232,47 @@ fn remove_deny_acl(path: &str) -> Result<(), String> {
         LocalFree(everyone_sid as *mut _);
 
         let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = SetEntriesInAclW(
-            filtered.len() as u32,
-            if filtered.is_empty() { std::ptr::null_mut() } else { filtered.as_mut_ptr() },
-            std::ptr::null_mut(),
-            &mut new_dacl,
-        );
+        let ret = if filtered.is_empty() && count > 0 {
+            // All entries were DENY Everyone — grant full access to current user + admins
+            let buf = current_user_sid_buf()?;
+            let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+            let mut admin_sid: PSID = std::ptr::null_mut();
+            let admin_sid_str = to_wide("S-1-5-32-544");
+            ConvertStringSidToSidW(admin_sid_str.as_ptr(), &mut admin_sid);
+
+            let mut entries_builder: Vec<EXPLICIT_ACCESS_W> = Vec::new();
+
+            // Allow current user full access
+            let mut ea_user: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea_user.grfAccessPermissions = GENERIC_ALL;
+            ea_user.grfAccessMode = GRANT_ACCESS;
+            ea_user.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea_user.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea_user.Trustee.TrusteeType = TRUSTEE_IS_USER;
+            ea_user.Trustee.ptstrName = token_user.User.Sid as *mut u16;
+            entries_builder.push(ea_user);
+
+            if !admin_sid.is_null() {
+                let mut ea_admin: EXPLICIT_ACCESS_W = std::mem::zeroed();
+                ea_admin.grfAccessPermissions = GENERIC_ALL;
+                ea_admin.grfAccessMode = GRANT_ACCESS;
+                ea_admin.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+                ea_admin.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+                ea_admin.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+                ea_admin.Trustee.ptstrName = admin_sid as *mut u16;
+                entries_builder.push(ea_admin);
+                LocalFree(admin_sid as _);
+            }
+
+            SetEntriesInAclW(entries_builder.len() as u32, entries_builder.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl)
+        } else {
+            SetEntriesInAclW(
+                filtered.len() as u32,
+                if filtered.is_empty() { std::ptr::null_mut() } else { filtered.as_mut_ptr() },
+                std::ptr::null_mut(),
+                &mut new_dacl,
+            )
+        };
         if ret != 0 {
             LocalFree(sd);
             return Err(format!("SetEntriesInAcl failed: {}", ret));
@@ -222,6 +333,11 @@ pub fn verify_lock(path: &str) -> Result<bool, String> {
             std::ptr::null_mut(),
             &mut sd,
         );
+
+        if is_access_denied(ret) {
+            // DENY Everyone blocks reading — definitely locked
+            return Ok(true);
+        }
         if ret != 0 {
             return Err(format!("GetNamedSecurityInfo failed: {}", ret));
         }

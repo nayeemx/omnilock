@@ -69,7 +69,9 @@ export function DiagnosticsPage() {
                 <Row label="Hardware available" ok={data.biometric.hardware_available} />
                 <Row label="Token saved" ok={data.biometric.token_exists} />
                 <Row label="Token decrypts" ok={data.biometric.token_load_ok} />
-                <p className="text-xs text-[color:var(--muted-foreground)]">{data.biometric.reason}</p>
+                {!data.biometric.hardware_available && data.biometric.reason && (
+                  <p className="text-xs text-[color:var(--destructive)]">{data.biometric.reason}</p>
+                )}
                 {data.biometric.last_error && <p className="text-xs text-[color:var(--destructive)]">{data.biometric.last_error}</p>}
               </div>
             </StatusCard>
