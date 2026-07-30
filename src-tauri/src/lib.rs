@@ -19,6 +19,9 @@ pub mod github_sync;
 pub mod system_monitor;
 pub mod logger;
 pub mod diagnostics;
+pub mod shell_access;
+pub mod cloud_status;
+pub mod shell_context;
 
 use tauri::State;
 use tauri::Manager;
@@ -150,11 +153,24 @@ fn cmd_unlock_session(
     *password_guard = Some(auth_payload.master_password);
 
     auto_lock::set_auto_lock_minutes(auto_lock_min);
+    auto_lock::set_on_idle_lock_callback(Box::new(|| {
+        process_guard::relock_all_unlocked_folders();
+    }));
     auto_lock::start_auto_lock_monitor();
 
     let current_config = config_guard.as_ref().unwrap();
     process_guard::update_locked_apps(current_config.locked_apps.clone());
-    process_guard::start_process_monitor(app);
+    process_guard::update_locked_folders(current_config.locked_folders.clone());
+    process_guard::start_process_monitor(app.clone());
+    process_guard::start_file_access_monitor(app);
+
+    drive_locker::set_monitored_locked_drives(current_config.locked_drives.clone());
+    drive_locker::set_usb_removal_callback(std::sync::Arc::new(|| {
+        let _ = crate::hidden_cmd("cmd")
+            .args(["/C", "rundll32.exe user32.dll,LockWorkStation"])
+            .spawn();
+    }));
+    drive_locker::start_usb_removal_monitor();
 
     Ok(token)
 }
@@ -286,6 +302,7 @@ fn cmd_add_locked_file(
     }
     let verified = file_locker::verify_lock(&path).unwrap_or(false);
     logger::log("LOCK", &format!("lock_file verify={} path={}", verified, path));
+    cloud_status::set_lock_state(&path, true);
     service_client::notify_lock_file(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -315,6 +332,7 @@ fn cmd_remove_locked_file(
     }
     let verified = file_locker::verify_lock(&path).unwrap_or(true);
     logger::log("UNLOCK", &format!("unlock_file verify={} path={}", verified, path));
+    cloud_status::set_lock_state(&path, false);
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&path, password);
@@ -342,6 +360,7 @@ fn cmd_add_locked_folder(
     }
     let verified = file_locker::verify_lock(&path).unwrap_or(false);
     logger::log("LOCK", &format!("lock_folder verify={} path={}", verified, path));
+    cloud_status::set_lock_state(&path, true);
     service_client::notify_lock_folder(&path);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -351,6 +370,7 @@ fn cmd_add_locked_folder(
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(config);
     if verified { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
@@ -371,6 +391,7 @@ fn cmd_remove_locked_folder(
     }
     let verified = file_locker::verify_lock(&path).unwrap_or(true);
     logger::log("UNLOCK", &format!("unlock_folder verify={} path={}", verified, path));
+    cloud_status::set_lock_state(&path, false);
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
     service_client::notify_unlock_item(&path, password);
@@ -378,6 +399,8 @@ fn cmd_remove_locked_folder(
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_folders.retain(|f| f != &path);
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    process_guard::update_locked_folders(config.locked_folders.clone());
+    process_guard::notify_folder_locked(&path);
     save_locked_items_summary(config);
     if !verified { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
@@ -391,15 +414,14 @@ fn cmd_rescue_unlock(path: String) -> Result<String, String> {
     }
 
     let verify_result = file_locker::verify_lock(&path);
-    let has_deny = match &verify_result {
+    let is_locked = match &verify_result {
         Ok(true) => true,
-        // ACCESS_DENIED means the lock is so strict we can't even read — definitely locked
         Err(e) if e.contains("err=5") || e.contains("err = 5") || e.contains("ACCESS_DENIED") => true,
         Ok(false) => false,
         Err(_) => false,
     };
-    logger::log("RESCUE", &format!("rescue_unlock verify_lock={:?} has_deny={} path={}", verify_result, has_deny, path));
-    if !has_deny {
+    logger::log("RESCUE", &format!("rescue_unlock verify_lock={:?} is_locked={} path={}", verify_result, is_locked, path));
+    if !is_locked {
         return Ok("not_locked".to_string());
     }
 
@@ -419,6 +441,35 @@ fn cmd_rescue_unlock(path: String) -> Result<String, String> {
     service_client::notify_force_remove_locked_item(&path);
     logger::log("RESCUE", &format!("rescue_unlock notified service: {}", path));
     Ok("rescued".to_string())
+}
+
+#[tauri::command]
+fn cmd_recover_acl(path: String) -> Result<String, String> {
+    logger::log("RECOVER", &format!("recover_acl start: {}", path));
+    match file_locker::safe_recover_acl(&path) {
+        Ok(()) => {
+            logger::log("RECOVER", &format!("recover_acl ok: {}", path));
+            Ok("recovered".to_string())
+        }
+        Err(e) => {
+            logger::log("RECOVER", &format!("recover_acl failed: {} err={}", path, e));
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+fn cmd_list_backups(path: String) -> Result<Vec<(String, u64)>, String> {
+    file_locker::list_backups(&path)
+}
+
+#[tauri::command]
+fn cmd_restore_backup(backup_path: String, target_path: String) -> Result<String, String> {
+    logger::log("BACKUP", &format!("restore_backup: {} -> {}", backup_path, target_path));
+    match file_locker::restore_backup(&backup_path, &target_path) {
+        Ok(()) => Ok("restored".to_string()),
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -746,6 +797,7 @@ fn cmd_widget_unlock(
             let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
             if verified { return Err("Unlock failed - ACL still present".to_string()); }
             service_client::notify_unlock_item(&target.target_id, &password);
+            process_guard::notify_folder_unlocked(&target.target_id);
         }
         "app" => {
             file_locker::unlock_file(&target.target_id)?;
@@ -769,6 +821,7 @@ fn cmd_widget_unlock(
     vault::encrypt_vault(&config, &password)?;
     let apps = config.locked_apps.clone();
     process_guard::update_locked_apps(apps);
+    process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(&config);
 
     {
@@ -1034,6 +1087,7 @@ async fn cmd_github_sync_from_cloud(
     let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
     *password_guard = Some(password);
     process_guard::update_locked_apps(config.locked_apps.clone());
+    process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(&config);
     Ok(())
 }
@@ -1056,6 +1110,27 @@ async fn cmd_get_weather(location: Option<String>) -> Result<system_monitor::Wea
 #[tauri::command]
 fn cmd_check_biometric() -> biometric::BiometricStatus {
     biometric::check_biometric_available()
+}
+
+#[tauri::command]
+fn cmd_install_context_menu() -> Result<String, String> {
+    match shell_context::install() {
+        Ok(()) => Ok("Context menu installed".to_string()),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+fn cmd_uninstall_context_menu() -> Result<String, String> {
+    match shell_context::uninstall() {
+        Ok(()) => Ok("Context menu uninstalled".to_string()),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+fn cmd_is_context_menu_installed() -> bool {
+    shell_context::is_installed()
 }
 
 #[tauri::command]
@@ -1130,8 +1205,15 @@ async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) 
         *password_guard = Some(password);
     }
     process_guard::update_locked_apps(config.locked_apps.clone());
+    process_guard::update_locked_folders(config.locked_folders.clone());
     process_guard::start_process_monitor(app.clone());
+    process_guard::start_file_access_monitor(app);
+    auto_lock::set_on_idle_lock_callback(Box::new(|| {
+        process_guard::relock_all_unlocked_folders();
+    }));
     auto_lock::start_auto_lock_monitor();
+    drive_locker::set_monitored_locked_drives(config.locked_drives.clone());
+    drive_locker::start_usb_removal_monitor();
     logger::log("BIOMETRIC", "biometric_login ok");
     Ok(())
 }
@@ -1142,8 +1224,104 @@ fn cmd_has_biometric_token() -> bool {
 }
 
 #[tauri::command]
+fn cmd_export_config(
+    state: State<'_, AppState>,
+    output_path: Option<String>,
+) -> Result<String, String> {
+    require_valid_session(&state)?;
+    let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_ref().ok_or("Session not unlocked")?;
+    let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+
+    if let Some(path) = output_path {
+        std::fs::write(&path, &json).map_err(|e| format!("Cannot write to {}: {}", path, e))?;
+        Ok(format!("Exported to {}", path))
+    } else {
+        Ok(json)
+    }
+}
+
+#[tauri::command]
+fn cmd_import_config(
+    state: State<'_, AppState>,
+    json_data: String,
+    merge: Option<bool>,
+) -> Result<String, String> {
+    require_valid_session(&state)?;
+    let imported: models::VaultConfig = serde_json::from_str(&json_data)
+        .map_err(|e| format!("Invalid config JSON: {}", e))?;
+
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+
+    if merge.unwrap_or(true) {
+        // Merge: add imported items to existing, deduplicate
+        for app in imported.locked_apps {
+            if !config.locked_apps.iter().any(|a| a.name == app.name) {
+                config.locked_apps.push(app);
+            }
+        }
+        for f in imported.locked_files {
+            if !config.locked_files.contains(&f) {
+                config.locked_files.push(f);
+            }
+        }
+        for f in imported.locked_folders {
+            if !config.locked_folders.contains(&f) {
+                config.locked_folders.push(f);
+            }
+        }
+        for d in imported.locked_drives {
+            if !config.locked_drives.contains(&d) {
+                config.locked_drives.push(d);
+            }
+        }
+    } else {
+        *config = imported;
+    }
+
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    save_locked_items_summary(config);
+    Ok("Configuration imported successfully".to_string())
+}
+
+#[tauri::command]
 fn cmd_get_diagnostics() -> diagnostics::Diagnostics {
     diagnostics::collect_diagnostics()
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct HistoryEntry {
+    pub timestamp: String,
+    pub component: String,
+    pub action: String,
+}
+
+#[tauri::command]
+fn cmd_get_lock_history(max_entries: Option<usize>) -> Vec<HistoryEntry> {
+    let log_text = logger::read_log(1024 * 64);
+    let max = max_entries.unwrap_or(200);
+
+    let mut entries: Vec<HistoryEntry> = Vec::new();
+    for line in log_text.lines() {
+        // Format: [timestamp] component: action
+        if let Some(rest) = line.strip_prefix('[') {
+            if let Some(end_bracket) = rest.find(']') {
+                let timestamp = rest[..end_bracket].to_string();
+                let after_bracket = rest[end_bracket + 1..].trim();
+                if let Some(colon_pos) = after_bracket.find(':') {
+                    let component = after_bracket[..colon_pos].trim().to_string();
+                    let action = after_bracket[colon_pos + 1..].trim().to_string();
+                    entries.push(HistoryEntry { timestamp, component, action });
+                }
+            }
+        }
+    }
+    entries.reverse();
+    entries.truncate(max);
+    entries
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1178,6 +1356,9 @@ pub fn run() {
             cmd_add_locked_app,
             cmd_remove_locked_app,
             cmd_rescue_unlock,
+            cmd_recover_acl,
+            cmd_list_backups,
+            cmd_restore_backup,
             cmd_generate_totp,
             cmd_generate_totp_qr,
             cmd_enable_2fa,
@@ -1219,7 +1400,13 @@ pub fn run() {
             cmd_toggle_biometric,
             cmd_biometric_login,
             cmd_has_biometric_token,
+            cmd_install_context_menu,
+            cmd_uninstall_context_menu,
+            cmd_is_context_menu_installed,
+            cmd_export_config,
+            cmd_import_config,
             cmd_get_diagnostics,
+            cmd_get_lock_history,
         ])
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -1326,6 +1513,14 @@ pub fn run() {
                 }
             } else {
                 logger::log("SERVICE", "service already running");
+            }
+
+            let vault_root = crate::vault::vault_dir();
+            if vault_root.exists() {
+                let root_str = vault_root.to_string_lossy().to_string();
+                cloud_status::try_init(&root_str);
+            } else {
+                logger::log("CLOUD", "vault dir does not exist, skipping cloud status init");
             }
 
             panic_hotkey::start_hotkey_listener();

@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search, ShieldAlert,
+  Download, Upload, FileJson,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
   addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile,
   pickFolder, pickFile, rescueUnlock,
+  exportConfig, importConfig,
   type VaultConfigDto,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -19,6 +21,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const [pathSearch, setPathSearch] = useState("");
   const [rescueLoading, setRescueLoading] = useState(false);
   const [rescuePath, setRescuePath] = useState("");
+  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     listDrives().then(setDrives).catch(e => setError("Failed to list drives: " + e));
@@ -279,7 +282,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
         </div>
         <div className="p-5">
           <p className="text-sm text-[color:var(--muted-foreground)] mb-4">
-            If a file or folder is locked by Windows but no longer appears in the vault (e.g. after reinstall), use this to remove the block. Select the locked item and OmniLock will remove the DENY permission.
+            If a file or folder is locked but no longer appears in the vault (e.g. after reinstall), use this to unlock it. Select the locked item and OmniLock will restore normal permissions.
           </p>
           <div className="flex items-center gap-3">
             <button onClick={handleRescuePickFolder} disabled={rescueLoading}
@@ -294,6 +297,79 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               {rescueLoading ? "Rescuing..." : "Select File"}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
+          <FileJson className="w-5 h-5 text-[color:var(--primary)]" />
+          <h3 className="font-semibold">Bulk Import / Export</h3>
+          <span className="text-xs text-[color:var(--muted-foreground)]">JSON configuration</span>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-[color:var(--muted-foreground)]">
+            Export your lock rules to a JSON file for backup or bulk editing. Import a previously exported file.
+          </p>
+          <div className="flex items-center gap-3">
+            <button onClick={async () => {
+              clearMessages();
+              try {
+                const path = await pickFolder();
+                if (!path) return;
+                const filename = `omnilock_config_${Date.now()}.json`;
+                const fullPath = `${path}\\${filename}`;
+                const msg = await exportConfig(fullPath);
+                setSuccess(msg);
+              } catch (e: any) {
+                setError("Export failed: " + e);
+              }
+            }} className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active">
+              <Download className="w-4 h-4" />
+              Export to File
+            </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                clearMessages();
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const msg = await importConfig(text, true);
+                  setSuccess(msg);
+                  await refresh();
+                } catch (e: any) {
+                  setError("Import failed: " + e);
+                }
+              }}
+            />
+            <button onClick={() => importRef.current?.click()}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan"
+                    style={{ background: "var(--gradient-brand)" }}>
+              <Upload className="w-4 h-4" />
+              Import from File
+            </button>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
+            <input type="checkbox" id="copy-export" className="accent-[color:var(--primary)]" />
+            <label htmlFor="copy-export">Copy to clipboard instead</label>
+          </div>
+          <button onClick={async () => {
+            clearMessages();
+            try {
+              const json = await exportConfig();
+              await navigator.clipboard.writeText(json);
+              setSuccess("Config copied to clipboard. It contains only lock settings (no passwords).");
+            } catch (e: any) {
+              setError("Copy failed: " + e);
+            }
+          }} className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active">
+            <Upload className="w-4 h-4" />
+            Copy to Clipboard
+          </button>
         </div>
       </div>
     </div>

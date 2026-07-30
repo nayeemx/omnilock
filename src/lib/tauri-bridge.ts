@@ -124,6 +124,10 @@ export async function rescueUnlock(path: string): Promise<string> {
   return invoke("cmd_rescue_unlock", { path });
 }
 
+export async function recoverAcl(path: string): Promise<string> {
+  return invoke("cmd_recover_acl", { path });
+}
+
 export async function generateTotpSecret(): Promise<string> {
   return invoke("cmd_generate_totp");
 }
@@ -419,7 +423,7 @@ export interface LockItemCheck {
   path: string;
   kind: string;
   exists: boolean;
-  deny_ace_present: boolean;
+  locked: boolean;
   check_error: string;
 }
 
@@ -442,4 +446,42 @@ export interface DriveDiagnostic {
 
 export async function getDiagnostics(): Promise<DiagnosticsDto> {
   return invoke("cmd_get_diagnostics");
+}
+
+export async function installContextMenu(): Promise<string> {
+  return invoke("cmd_install_context_menu");
+}
+
+export async function uninstallContextMenu(): Promise<string> {
+  return invoke("cmd_uninstall_context_menu");
+}
+
+export async function isContextMenuInstalled(): Promise<boolean> {
+  return invoke("cmd_is_context_menu_installed");
+}
+
+export async function exportConfig(outputPath?: string): Promise<string> {
+  return invoke("cmd_export_config", { outputPath: outputPath ?? null });
+}
+
+export async function importConfig(jsonData: string, merge?: boolean): Promise<string> {
+  return invoke("cmd_import_config", { jsonData, merge: merge ?? true });
+}
+
+export async function listBackups(path: string): Promise<[string, number][]> {
+  return invoke("cmd_list_backups", { path });
+}
+
+export interface HistoryEntry {
+  timestamp: string;
+  component: string;
+  action: string;
+}
+
+export async function getLockHistory(maxEntries?: number): Promise<HistoryEntry[]> {
+  return invoke("cmd_get_lock_history", { maxEntries: maxEntries ?? null });
+}
+
+export async function restoreBackup(backupPath: string, targetPath: string): Promise<string> {
+  return invoke("cmd_restore_backup", { backupPath, targetPath });
 }

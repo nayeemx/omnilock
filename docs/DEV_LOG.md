@@ -220,4 +220,22 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 
 ---
 
-Last updated: 2026-07-26
+---
+
+### File-Unlock Child ACL Inheritance Gap
+
+**Date:** 2026-07-30
+**Symptoms:** Unlocking a folder restores the folder's own ACL (user+Admins+SYSTEM) but files inside remain inaccessible — they still have the restricted DACL (Admins+SYSTEM only) inherited from when the folder was locked.
+**Root Cause:** `remove_safe_lock` calls `SetNamedSecurityInfoW` on the folder alone, which does NOT retroactively reset inheritance on existing child files that received inherited ACEs during lock propagation. The `SUB_CONTAINERS_AND_OBJECTS_INHERIT` flag propagates the restricted ACEs on lock, but restoring the parent's DACL on unlock doesn't undo ACEs already stored on children.
+
+**Fix (app `file_locker.rs`):** `unlock_folder` now calls `unlock_children_recursive()` — walks all child files, checks if owner=SYSTEM (`verify_lock`), and calls `remove_safe_lock` on each.
+
+**Fix (service `acl.rs`):** `remove_lock` now calls `remove_children_recursive()` for directory paths — same walk + reset for child files.
+
+**Files Changed:** `src-tauri/src/file_locker.rs`, `service/src/acl.rs`
+
+**Prevention:** When modifying ACLs on a folder, always consider existing child objects that may have inherited ACEs. A parent-only `SetNamedSecurityInfoW` does not propagate the change to children that already have the inherited ACE stored locally. Explicit per-child cleanup is required.
+
+---
+
+Last updated: 2026-07-30

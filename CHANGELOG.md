@@ -4,6 +4,15 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.0.32] - 2026-07-30
+
+### Fixed
+- **File-unlock child ACL inheritance gap**: Unlocking a folder now recursively resets ACLs on all child files that inherited the restricted DACL during the lock. Previously, child files remained inaccessible (Admins+SYSTEM only) after folder unlock.
+  - App (`file_locker.rs`): `unlock_children_recursive` walks children, calls `remove_safe_lock` on each locked file
+  - Service (`acl.rs`): `remove_children_recursive` same recursive reset for child files
+
+---
+
 ## [0.1.3] - 2026-07-27
 
 ### Added

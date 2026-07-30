@@ -1,7 +1,9 @@
 use sysinfo::System;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock, atomic::{AtomicBool, Ordering}};
+use std::time::Instant;
 use tauri::Emitter;
 use tauri::Manager;
 use windows_sys::Win32::System::Threading::{
@@ -11,7 +13,17 @@ use windows_sys::Win32::System::Threading::{
 use crate::models::{LockedApp, UnlockTarget};
 
 static LOCKED_APPS: OnceLock<Mutex<Vec<LockedApp>>> = OnceLock::new();
+static LOCKED_FOLDERS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static UNLOCKED_FOLDERS: OnceLock<Mutex<Vec<UnlockedFolderState>>> = OnceLock::new();
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
+static FOLDER_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct UnlockedFolderState {
+    path: String,
+    unlocked_at: Instant,
+}
 
 fn locked_apps_store() -> &'static Mutex<Vec<LockedApp>> {
     LOCKED_APPS.get_or_init(|| Mutex::new(Vec::new()))
@@ -20,6 +32,44 @@ fn locked_apps_store() -> &'static Mutex<Vec<LockedApp>> {
 pub fn update_locked_apps(apps: Vec<LockedApp>) {
     if let Ok(mut guard) = locked_apps_store().lock() {
         *guard = apps;
+    }
+}
+
+pub fn update_locked_folders(folders: Vec<String>) {
+    if let Ok(mut guard) = LOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        *guard = folders;
+    }
+}
+
+pub fn notify_folder_unlocked(path: &str) {
+    if let Ok(mut guard) = UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        if !guard.iter().any(|u| u.path == path) {
+            guard.push(UnlockedFolderState {
+                path: path.to_string(),
+                unlocked_at: Instant::now(),
+            });
+        }
+    }
+}
+
+pub fn notify_folder_locked(path: &str) {
+    if let Ok(mut guard) = UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        guard.retain(|u| u.path != path);
+    }
+}
+
+pub fn relock_all_unlocked_folders() {
+    let paths: Vec<String> = UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .map(|g| g.iter().map(|u| u.path.clone()).collect())
+        .unwrap_or_default();
+
+    for path in &paths {
+        let _ = crate::file_locker::lock_folder(path);
+    }
+
+    if let Ok(mut guard) = UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        guard.clear();
     }
 }
 
@@ -174,4 +224,122 @@ pub fn start_process_monitor(app_handle: tauri::AppHandle) {
 
 pub fn stop_process_monitor() {
     MONITOR_RUNNING.store(false, Ordering::SeqCst);
+}
+
+fn get_explorer_paths() -> Vec<String> {
+    crate::shell_access::get_explorer_paths()
+}
+
+fn normalize_path(p: &str) -> String {
+    p.trim_end_matches('\\').trim_end_matches('/').to_lowercase()
+}
+
+pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
+    if FOLDER_MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+
+        while FOLDER_MONITOR_RUNNING.load(Ordering::SeqCst) {
+            let folders = LOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new()))
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+
+            let explorer_paths: Vec<String> = if folders.is_empty() {
+                Vec::new()
+            } else {
+                get_explorer_paths()
+            };
+
+            for folder in &folders {
+                let norm_folder = normalize_path(folder);
+
+                let is_in_explorer = explorer_paths.iter().any(|p| {
+                    let norm_p = normalize_path(p);
+                    norm_p == norm_folder || norm_p.starts_with(&format!("{}\\", norm_folder))
+                });
+
+                let already_unlocked = UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new()))
+                    .lock()
+                    .map(|g| g.iter().any(|u| normalize_path(&u.path) == norm_folder))
+                    .unwrap_or(false);
+
+                if is_in_explorer && !already_unlocked {
+                    let display_name = Path::new(folder)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| folder.clone());
+
+                    let target = UnlockTarget {
+                        target_type: "folder".to_string(),
+                        target_id: folder.clone(),
+                        display_name,
+                    };
+
+                    if let Ok(mut guard) = crate::UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock() {
+                        *guard = Some(target.clone());
+                    }
+
+                    let _ = app_handle.emit("app-blocked", &target);
+
+                    if let Some(widget) = app_handle.get_webview_window("widget") {
+                        let _ = widget.show();
+                        let _ = widget.set_focus();
+                        let _ = widget.emit("unlock-target", &target);
+                    }
+                }
+            }
+
+            // Re-lock folders: on Explorer close OR time-based auto re-lock
+            {
+                let mut unlocked_guard = match UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+                    Ok(g) => g,
+                    Err(_) => {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue;
+                    }
+                };
+
+                let auto_lock_min = crate::auto_lock::get_auto_lock_minutes();
+                let elapsed_threshold = if auto_lock_min > 0 {
+                    Some(std::time::Duration::from_secs(auto_lock_min as u64 * 60))
+                } else {
+                    None
+                };
+
+                let mut to_relock: Vec<usize> = Vec::new();
+                for (i, uf) in unlocked_guard.iter().enumerate() {
+                    let norm_path = normalize_path(&uf.path);
+                    let still_open = explorer_paths.iter().any(|p| {
+                        let norm_p = normalize_path(p);
+                        norm_p == norm_path || norm_p.starts_with(&format!("{}\\", norm_path))
+                    });
+
+                    let time_expired = elapsed_threshold
+                        .map(|threshold| uf.unlocked_at.elapsed() >= threshold)
+                        .unwrap_or(false);
+
+                    if !still_open || time_expired {
+                        to_relock.push(i);
+                    }
+                }
+
+                for i in to_relock.into_iter().rev() {
+                    let uf = unlocked_guard.remove(i);
+                    let _ = crate::file_locker::lock_folder(&uf.path);
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+
+        FOLDER_MONITOR_RUNNING.store(false, Ordering::SeqCst);
+    });
+}
+
+pub fn stop_file_access_monitor() {
+    FOLDER_MONITOR_RUNNING.store(false, Ordering::SeqCst);
 }

@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Once;
+use std::sync::{Mutex, Once, OnceLock};
 
 static AUTO_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
 static AUTO_LOCK_MINUTES: AtomicU32 = AtomicU32::new(5);
@@ -15,6 +15,19 @@ struct LASTINPUTINFO {
 pub fn set_auto_lock_minutes(minutes: u32) {
     AUTO_LOCK_MINUTES.store(minutes, Ordering::SeqCst);
     AUTO_LOCK_ENABLED.store(minutes > 0, Ordering::SeqCst);
+}
+
+pub fn get_auto_lock_minutes() -> u32 {
+    AUTO_LOCK_MINUTES.load(Ordering::SeqCst)
+}
+
+// Callback invoked on idle lock trigger (used to re-lock folders before workstation lock)
+static ON_IDLE_LOCK: OnceLock<Mutex<Option<Box<dyn Fn() + Send>>>> = OnceLock::new();
+
+pub fn set_on_idle_lock_callback(cb: Box<dyn Fn() + Send>) {
+    if let Ok(mut guard) = ON_IDLE_LOCK.get_or_init(|| Mutex::new(None)).lock() {
+        *guard = Some(cb);
+    }
 }
 
 pub fn start_auto_lock_monitor() {
@@ -84,7 +97,16 @@ fn get_idle_time_secs() -> u64 {
     }
 }
 
+fn do_idle_relock() {
+    if let Ok(guard) = ON_IDLE_LOCK.get_or_init(|| Mutex::new(None)).lock() {
+        if let Some(ref cb) = *guard {
+            cb();
+        }
+    }
+}
+
 fn do_lock_workstation() {
+    do_idle_relock();
     unsafe {
         extern "system" {
             fn GetModuleHandleA(name: *const u8) -> isize;

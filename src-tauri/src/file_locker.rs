@@ -1,8 +1,12 @@
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Security::*;
 use windows_sys::Win32::Security::Authorization::*;
+use windows_sys::Win32::Storage::FileSystem::*;
 use windows_sys::Win32::System::Threading::*;
+use windows_sys::Win32::UI::Shell::*;
 
 fn to_wide(s: &str) -> Vec<u16> {
     use std::ffi::OsStr;
@@ -60,287 +64,400 @@ unsafe fn enable_privilege(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-unsafe fn take_ownership(path_w: *const u16) -> Result<(), String> {
-    enable_privilege("SeTakeOwnershipPrivilege")?;
-    let buf = current_user_sid_buf()?;
-    let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
-    let ret = SetNamedSecurityInfoW(
-        path_w as _,
-        SE_FILE_OBJECT,
-        OWNER_SECURITY_INFORMATION,
-        token_user.User.Sid,
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-    );
-    if ret != 0 {
-        return Err(format!("SetNamedSecurityInfo(OWNER) failed: err={}", ret));
+fn make_safe_dacl() -> Result<(*mut ACL, Vec<u8>), String> {
+    unsafe {
+        let buf = current_user_sid_buf()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+
+        let mut admin_sid: PSID = std::ptr::null_mut();
+        let admin_sid_str = to_wide("S-1-5-32-544");
+        ConvertStringSidToSidW(admin_sid_str.as_ptr(), &mut admin_sid);
+
+        let mut system_sid: PSID = std::ptr::null_mut();
+        let system_sid_str = to_wide("S-1-5-18");
+        ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid);
+
+        let mut entries: Vec<EXPLICIT_ACCESS_W> = Vec::new();
+
+        let mut ea_user: EXPLICIT_ACCESS_W = std::mem::zeroed();
+        ea_user.grfAccessPermissions = GENERIC_ALL;
+        ea_user.grfAccessMode = GRANT_ACCESS;
+        ea_user.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+        ea_user.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        ea_user.Trustee.TrusteeType = TRUSTEE_IS_USER;
+        ea_user.Trustee.ptstrName = token_user.User.Sid as *mut u16;
+        entries.push(ea_user);
+
+        if !admin_sid.is_null() {
+            let mut ea_admin: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea_admin.grfAccessPermissions = GENERIC_ALL;
+            ea_admin.grfAccessMode = GRANT_ACCESS;
+            ea_admin.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea_admin.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea_admin.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+            ea_admin.Trustee.ptstrName = admin_sid as *mut u16;
+            entries.push(ea_admin);
+        }
+
+        if !system_sid.is_null() {
+            let mut ea_system: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea_system.grfAccessPermissions = GENERIC_ALL;
+            ea_system.grfAccessMode = GRANT_ACCESS;
+            ea_system.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea_system.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea_system.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+            ea_system.Trustee.ptstrName = system_sid as *mut u16;
+            entries.push(ea_system);
+        }
+
+        let mut new_dacl: *mut ACL = std::ptr::null_mut();
+        let ret = SetEntriesInAclW(entries.len() as u32, entries.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl);
+
+        if !admin_sid.is_null() { LocalFree(admin_sid as _); }
+        if !system_sid.is_null() { LocalFree(system_sid as _); }
+
+        if ret != 0 {
+            return Err(format!("SetEntriesInAclW failed: {}", ret));
+        }
+
+        Ok((new_dacl, buf))
+    }
+}
+
+pub fn safe_recover_acl(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    unsafe {
+        let path_wide = to_wide(path);
+
+        enable_privilege("SeTakeOwnershipPrivilege")?;
+
+        let (new_dacl, buf) = make_safe_dacl()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+
+        // Set both owner and DACL in one call
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            token_user.User.Sid,
+            std::ptr::null_mut(),
+            new_dacl,
+            std::ptr::null_mut(),
+        );
+
+        LocalFree(new_dacl as *mut _);
+
+        if ret != 0 {
+            return Err(format!("SetNamedSecurityInfo failed: err={}", ret));
+        }
+        Ok(())
+    }
+}
+
+fn apply_safe_lock(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    unsafe {
+        let path_wide = to_wide(path);
+        enable_privilege("SeTakeOwnershipPrivilege")?;
+
+        // Set owner to SYSTEM so user loses ownership-based privileges
+        let mut system_sid: PSID = std::ptr::null_mut();
+        let system_sid_str = to_wide("S-1-5-18");
+        if ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid) == 0 {
+            return Err(format!("ConvertStringSidToSid(SYSTEM) failed"));
+        }
+
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            system_sid,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        LocalFree(system_sid as _);
+
+        if ret != 0 {
+            return Err(format!("SetNamedSecurityInfo(OWNER=SYSTEM) failed: err={}", ret));
+        }
+
+        // Replace DACL: only Administrators + SYSTEM, current user removed
+        let mut admin_sid: PSID = std::ptr::null_mut();
+        let admin_sid_str = to_wide("S-1-5-32-544");
+        ConvertStringSidToSidW(admin_sid_str.as_ptr(), &mut admin_sid);
+
+        let mut sys_sid2: PSID = std::ptr::null_mut();
+        let sys_sid2_str = to_wide("S-1-5-18");
+        ConvertStringSidToSidW(sys_sid2_str.as_ptr(), &mut sys_sid2);
+
+        let mut entries: Vec<EXPLICIT_ACCESS_W> = Vec::new();
+
+        if !admin_sid.is_null() {
+            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea.grfAccessPermissions = GENERIC_ALL;
+            ea.grfAccessMode = GRANT_ACCESS;
+            ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+            ea.Trustee.ptstrName = admin_sid as *mut u16;
+            entries.push(ea);
+        }
+
+        if !sys_sid2.is_null() {
+            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea.grfAccessPermissions = GENERIC_ALL;
+            ea.grfAccessMode = GRANT_ACCESS;
+            ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+            ea.Trustee.ptstrName = sys_sid2 as *mut u16;
+            entries.push(ea);
+        }
+
+        let mut new_dacl: *mut ACL = std::ptr::null_mut();
+        let ret = SetEntriesInAclW(entries.len() as u32, entries.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl);
+
+        if !admin_sid.is_null() { LocalFree(admin_sid as _); }
+        if !sys_sid2.is_null() { LocalFree(sys_sid2 as _); }
+        if ret != 0 {
+            return Err(format!("SetEntriesInAclW failed: {}", ret));
+        }
+
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            new_dacl,
+            std::ptr::null_mut(),
+        );
+
+        LocalFree(new_dacl as *mut _);
+
+        if ret != 0 {
+            return Err(format!("SetNamedSecurityInfo(DACL) failed: err={}", ret));
+        }
+        Ok(())
+    }
+}
+
+fn remove_safe_lock(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    unsafe {
+        let path_wide = to_wide(path);
+        enable_privilege("SeTakeOwnershipPrivilege")?;
+
+        let (new_dacl, buf) = make_safe_dacl()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+
+        // Step 1: restore DACL first (needs WRITE_DAC via Administrators group)
+        let ret1 = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            new_dacl,
+            std::ptr::null_mut(),
+        );
+
+        if ret1 != 0 {
+            LocalFree(new_dacl as *mut _);
+            return Err(format!("SetNamedSecurityInfo(DACL) failed: err={}", ret1));
+        }
+
+        // Step 2: restore owner to current user (needs SeTakeOwnershipPrivilege)
+        let ret2 = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            token_user.User.Sid,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+
+        LocalFree(new_dacl as *mut _);
+
+        if ret2 != 0 {
+            return Err(format!("SetNamedSecurityInfo(OWNER) failed: err={}", ret2));
+        }
+        Ok(())
+    }
+}
+
+fn backup_path_for(path: &str) -> Result<PathBuf, String> {
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let safe_name = path.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '_', "_");
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup_dir = PathBuf::from(appdata)
+        .join("InnologyBD")
+        .join("OmniLock")
+        .join("backups")
+        .join(&safe_name);
+    fs::create_dir_all(&backup_dir).map_err(|e| format!("Cannot create backup dir: {}", e))?;
+    let name = Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let ext = Path::new(path)
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let stem = if name.ends_with(&ext) && ext.len() > 1 {
+        &name[..name.len() - ext.len()]
+    } else {
+        &name
+    };
+    Ok(backup_dir.join(format!("{}_{}{}", stem, now, ext)))
+}
+
+fn create_backup_before_lock(path: &str) -> Result<(), String> {
+    let src = Path::new(path);
+    if !src.exists() {
+        return Ok(());
+    }
+    let dst = backup_path_for(path)?;
+    if src.is_dir() {
+        let manifest_path = dst.with_extension("json");
+        let mut entries = Vec::new();
+        if let Ok(dir_entries) = fs::read_dir(src) {
+            for entry in dir_entries.flatten() {
+                entries.push(entry.path().to_string_lossy().to_string());
+            }
+        }
+        let meta = serde_json::json!({
+            "path": path,
+            "backup_time": SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+            "contents": entries,
+        });
+        fs::write(&manifest_path, serde_json::to_string_pretty(&meta).unwrap())
+            .map_err(|e| format!("Cannot write backup manifest: {}", e))?;
+    } else {
+        fs::copy(src, &dst).map_err(|e| format!("Cannot create backup: {}", e))?;
+        let mut perms = fs::metadata(&dst).map_err(|e| e.to_string())?.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&dst, perms).ok();
     }
     Ok(())
 }
 
-unsafe fn get_current_dacl(path_w: *const u16) -> Result<(*mut ACL, PSECURITY_DESCRIPTOR), String> {
-    let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-    let ret = GetNamedSecurityInfoW(
-        path_w,
-        SE_FILE_OBJECT,
-        DACL_SECURITY_INFORMATION,
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-        &mut sd,
-    );
-    if ret != 0 {
-        // If access is denied, try taking ownership and retry once
-        if is_access_denied(ret) {
-            take_ownership(path_w)?;
-            let ret2 = GetNamedSecurityInfoW(
-                path_w,
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &mut sd,
-            );
-            if ret2 != 0 {
-                return Err(format!("GetNamedSecurityInfo failed: err={} (after take ownership)", ret2));
+pub fn list_backups(path: &str) -> Result<Vec<(String, u64)>, String> {
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    let safe_name = path.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '_', "_");
+    let backup_dir = PathBuf::from(appdata)
+        .join("InnologyBD")
+        .join("OmniLock")
+        .join("backups")
+        .join(&safe_name);
+    if !backup_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut backups = Vec::new();
+    if let Ok(entries) = fs::read_dir(&backup_dir) {
+        for entry in entries.flatten() {
+            let meta = entry.metadata().ok();
+            let _size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            if let Some(modified) = meta.and_then(|m| m.modified().ok()) {
+                let secs = modified
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                backups.push((entry.path().to_string_lossy().to_string(), secs));
+            } else {
+                backups.push((entry.path().to_string_lossy().to_string(), 0));
             }
-        } else {
-            return Err(format!("GetNamedSecurityInfo failed: err={}", ret));
         }
     }
-
-    let mut dacl_present: i32 = 0;
-    let mut dacl: *mut ACL = std::ptr::null_mut();
-    let mut dacl_defaulted: i32 = 0;
-    GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
-
-    if dacl_present == 0 || dacl.is_null() {
-        LocalFree(sd);
-        return Err("No DACL present on object".to_string());
-    }
-
-    Ok((dacl, sd))
+    backups.sort_by(|a, b| b.1.cmp(&a.1));
+    Ok(backups)
 }
 
-fn apply_deny_acl(path: &str) -> Result<(), String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
+pub fn restore_backup(backup_path: &str, target_path: &str) -> Result<(), String> {
+    let src = Path::new(backup_path);
+    let dst = Path::new(target_path);
+    if !src.exists() {
+        return Err("Backup file does not exist".to_string());
     }
-
-    unsafe {
-        let path_wide = to_wide(path);
-
-        let (existing_dacl, sd) = get_current_dacl(path_wide.as_ptr())?;
-
-        let mut everyone_sid: PSID = std::ptr::null_mut();
-        let everyone_sid_str = to_wide("S-1-1-0");
-        if ConvertStringSidToSidW(everyone_sid_str.as_ptr(), &mut everyone_sid) == 0 {
-            LocalFree(sd);
-            return Err(format!("ConvertStringSidToSid failed: {}", std::io::Error::last_os_error()));
-        }
-
-        let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
-        ea.grfAccessPermissions = GENERIC_ALL;
-        ea.grfAccessMode = DENY_ACCESS;
-        ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-        ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-        ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-        ea.Trustee.ptstrName = everyone_sid as *mut u16;
-
-        let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = SetEntriesInAclW(1, &mut ea, existing_dacl, &mut new_dacl);
-
-        LocalFree(everyone_sid as *mut _);
-
-        if ret != 0 {
-            LocalFree(sd);
-            return Err(format!("SetEntriesInAcl failed: {}", ret));
-        }
-
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            new_dacl,
-            std::ptr::null_mut(),
-        );
-
-        LocalFree(new_dacl as *mut _);
-        LocalFree(sd);
-
-        if ret != 0 {
-            return Err(format!("SetNamedSecurityInfo failed: err={}", ret));
-        }
-        Ok(())
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create target parent: {}", e))?;
     }
-}
-
-fn remove_deny_acl(path: &str) -> Result<(), String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
-    }
-
-    unsafe {
-        let path_wide = to_wide(path);
-
-        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-        let ret = GetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut sd,
-        );
-
-        if is_access_denied(ret) {
-            // DENY Everyone blocks reading — take ownership first
-            take_ownership(path_wide.as_ptr())?;
-            let ret2 = GetNamedSecurityInfoW(
-                path_wide.as_ptr(),
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                &mut sd,
-            );
-            if ret2 != 0 {
-                return Err(format!("GetNamedSecurityInfo failed: err={} (after take ownership)", ret2));
-            }
-        } else if ret != 0 {
-            return Err(format!("GetNamedSecurityInfo failed: {}", ret));
-        }
-
-        let mut dacl_present: i32 = 0;
-        let mut dacl: *mut ACL = std::ptr::null_mut();
-        let mut dacl_defaulted: i32 = 0;
-        GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
-
-        if dacl_present == 0 || dacl.is_null() {
-            LocalFree(sd);
-            return Ok(());
-        }
-
-        let mut everyone_sid: PSID = std::ptr::null_mut();
-        let everyone_sid_str = to_wide("S-1-1-0");
-        if ConvertStringSidToSidW(everyone_sid_str.as_ptr(), &mut everyone_sid) == 0 {
-            LocalFree(sd);
-            return Err(format!("ConvertStringSidToSid failed: {}", std::io::Error::last_os_error()));
-        }
-
-        let mut count: u32 = 0;
-        let mut entries: *mut EXPLICIT_ACCESS_W = std::ptr::null_mut();
-        let ret = GetExplicitEntriesFromAclW(dacl, &mut count, &mut entries);
-        if ret != 0 {
-            LocalFree(everyone_sid as *mut _);
-            LocalFree(sd);
-            return Err(format!("GetExplicitEntriesFromAclW failed: {}", ret));
-        }
-
-        let mut filtered: Vec<EXPLICIT_ACCESS_W> = Vec::new();
-        for i in 0..count {
-            let entry = &*entries.add(i as usize);
-            let is_deny_everyone = entry.grfAccessMode == DENY_ACCESS
-                && EqualSid(entry.Trustee.ptstrName as PSID, everyone_sid) != 0;
-            if !is_deny_everyone {
-                filtered.push(*entry);
-            }
-        }
-
-        LocalFree(entries as *mut _);
-        LocalFree(everyone_sid as *mut _);
-
-        let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = if filtered.is_empty() && count > 0 {
-            // All entries were DENY Everyone — grant full access to current user + admins
-            let buf = current_user_sid_buf()?;
-            let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
-            let mut admin_sid: PSID = std::ptr::null_mut();
-            let admin_sid_str = to_wide("S-1-5-32-544");
-            ConvertStringSidToSidW(admin_sid_str.as_ptr(), &mut admin_sid);
-
-            let mut entries_builder: Vec<EXPLICIT_ACCESS_W> = Vec::new();
-
-            // Allow current user full access
-            let mut ea_user: EXPLICIT_ACCESS_W = std::mem::zeroed();
-            ea_user.grfAccessPermissions = GENERIC_ALL;
-            ea_user.grfAccessMode = GRANT_ACCESS;
-            ea_user.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-            ea_user.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-            ea_user.Trustee.TrusteeType = TRUSTEE_IS_USER;
-            ea_user.Trustee.ptstrName = token_user.User.Sid as *mut u16;
-            entries_builder.push(ea_user);
-
-            if !admin_sid.is_null() {
-                let mut ea_admin: EXPLICIT_ACCESS_W = std::mem::zeroed();
-                ea_admin.grfAccessPermissions = GENERIC_ALL;
-                ea_admin.grfAccessMode = GRANT_ACCESS;
-                ea_admin.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-                ea_admin.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-                ea_admin.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
-                ea_admin.Trustee.ptstrName = admin_sid as *mut u16;
-                entries_builder.push(ea_admin);
-                LocalFree(admin_sid as _);
-            }
-
-            SetEntriesInAclW(entries_builder.len() as u32, entries_builder.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl)
-        } else {
-            SetEntriesInAclW(
-                filtered.len() as u32,
-                if filtered.is_empty() { std::ptr::null_mut() } else { filtered.as_mut_ptr() },
-                std::ptr::null_mut(),
-                &mut new_dacl,
-            )
-        };
-        if ret != 0 {
-            LocalFree(sd);
-            return Err(format!("SetEntriesInAcl failed: {}", ret));
-        }
-
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            new_dacl,
-            std::ptr::null_mut(),
-        );
-
-        LocalFree(new_dacl as *mut _);
-        LocalFree(sd);
-
-        if ret != 0 {
-            return Err(format!("SetNamedSecurityInfo failed: err={}", ret));
-        }
-        Ok(())
-    }
+    fs::copy(src, dst).map_err(|e| format!("Cannot restore backup: {}", e))?;
+    Ok(())
 }
 
 pub fn lock_file(path: &str) -> Result<(), String> {
-    apply_deny_acl(path)
+    create_backup_before_lock(path)?;
+    apply_safe_lock(path)
 }
 
 pub fn unlock_file(path: &str) -> Result<(), String> {
-    remove_deny_acl(path)
+    remove_safe_lock(path)
+}
+
+fn apply_lock_icon(path: &str) -> Result<(), String> {
+    let dir = Path::new(path);
+    if !dir.is_dir() {
+        return Err("Not a directory".to_string());
+    }
+
+    let ini_path = dir.join("desktop.ini");
+    let ini_content = "[.ShellClassInfo]\r\nIconResource=%SystemRoot%\\system32\\imageres.dll,204\r\n";
+    fs::write(&ini_path, ini_content).map_err(|e| e.to_string())?;
+
+    unsafe {
+        let ini_wide = to_wide(&ini_path.to_string_lossy());
+        SetFileAttributesW(ini_wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
+        SHChangeNotify(SHCNE_UPDATEITEM as i32, SHCNF_PATHW as u32, ini_wide.as_ptr() as _, std::ptr::null_mut());
+    }
+
+    Ok(())
+}
+
+fn remove_lock_icon(path: &str) -> Result<(), String> {
+    let dir = Path::new(path);
+    let ini_path = dir.join("desktop.ini");
+    if ini_path.exists() {
+        unsafe {
+            let ini_wide = to_wide(&ini_path.to_string_lossy());
+            SetFileAttributesW(ini_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+        }
+        fs::remove_file(&ini_path).map_err(|e| e.to_string())?;
+
+        unsafe {
+            let folder_wide = to_wide(path);
+            SHChangeNotify(SHCNE_UPDATEITEM as i32, SHCNF_PATHW as u32, folder_wide.as_ptr() as _, std::ptr::null_mut());
+        }
+    }
+    Ok(())
 }
 
 pub fn lock_folder(path: &str) -> Result<(), String> {
-    let dir_path = std::path::Path::new(path);
+    let dir_path = Path::new(path);
     if !dir_path.exists() || !dir_path.is_dir() {
         return Err(format!("Folder does not exist: {}", path));
     }
-    apply_deny_acl(path)
+    create_backup_before_lock(path)?;
+    apply_safe_lock(path)?;
+    apply_lock_icon(path)?;
+    Ok(())
 }
 
 pub fn verify_lock(path: &str) -> Result<bool, String> {
@@ -355,7 +472,7 @@ pub fn verify_lock(path: &str) -> Result<bool, String> {
         let ret = GetNamedSecurityInfoW(
             path_wide.as_ptr(),
             SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -364,44 +481,60 @@ pub fn verify_lock(path: &str) -> Result<bool, String> {
         );
 
         if is_access_denied(ret) {
-            // DENY Everyone blocks reading — definitely locked
             return Ok(true);
         }
         if ret != 0 {
             return Err(format!("GetNamedSecurityInfo failed: {}", ret));
         }
 
-        let mut dacl_present: i32 = 0;
-        let mut dacl: *mut ACL = std::ptr::null_mut();
-        let mut dacl_defaulted: i32 = 0;
-        GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
+        // Check owner: SYSTEM = locked
+        let mut owner_sid: PSID = std::ptr::null_mut();
+        let mut owner_defaulted: i32 = 0;
+        GetSecurityDescriptorOwner(sd, &mut owner_sid, &mut owner_defaulted);
 
-        let mut has_deny = false;
-        if dacl_present != 0 && !dacl.is_null() {
-            let mut count: u32 = 0;
-            let mut ea_ptr: *mut EXPLICIT_ACCESS_W = std::ptr::null_mut();
-            let ret = GetExplicitEntriesFromAclW(dacl, &mut count, &mut ea_ptr);
-            if ret == 0 && !ea_ptr.is_null() {
-                for i in 0..count {
-                    let entry = &*ea_ptr.add(i as usize);
-                    if entry.grfAccessMode == DENY_ACCESS {
-                        has_deny = true;
-                        break;
-                    }
-                }
-                LocalFree(ea_ptr as *mut _);
+        if !owner_sid.is_null() {
+            let system_sid_str = to_wide("S-1-5-18");
+            let mut system_sid: PSID = std::ptr::null_mut();
+            if ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid) != 0 {
+                let is_system = EqualSid(owner_sid, system_sid) != 0;
+                LocalFree(system_sid as _);
+                LocalFree(sd);
+                return Ok(is_system);
             }
         }
 
         LocalFree(sd);
-        Ok(has_deny)
+        Ok(false)
     }
 }
 
 pub fn unlock_folder(path: &str) -> Result<(), String> {
-    let dir_path = std::path::Path::new(path);
+    let dir_path = Path::new(path);
     if !dir_path.exists() || !dir_path.is_dir() {
         return Err(format!("Folder does not exist: {}", path));
     }
-    remove_deny_acl(path)
+    remove_safe_lock(path)?;
+    remove_lock_icon(path)?;
+    // Recursively reset ACLs on child files that inherited the restricted DACL
+    unlock_children_recursive(dir_path)?;
+    Ok(())
+}
+
+fn unlock_children_recursive(dir: &Path) -> Result<(), String> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {}", e))?;
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if child.is_dir() {
+            unlock_children_recursive(&child)?;
+        } else if child.is_file() {
+            // Only reset if the file's ACL is restricted (owner check is fast)
+            if let Ok(true) = verify_lock(&child.to_string_lossy()) {
+                remove_safe_lock(&child.to_string_lossy()).ok();
+            }
+        }
+    }
+    Ok(())
 }

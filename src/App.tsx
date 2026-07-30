@@ -18,6 +18,7 @@ import { SecurityPage } from "./components/pages/SecurityPage";
 import { SystemMonitorPage } from "./components/pages/SystemMonitorPage";
 import { DashboardPage } from "./components/pages/DashboardPage";
 import { DiagnosticsPage } from "./components/pages/DiagnosticsPage";
+import { HistoryPage } from "./components/pages/HistoryPage";
 import { UnlockWidget } from "./components/widget/UnlockWidget";
 import { type TabId } from "./components/types";
 
@@ -220,6 +221,7 @@ export default function App() {
           {activeTab === "presets" && <PresetsPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "vault" && <VaultPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "security" && <SecurityPage config={vaultConfig} refresh={refreshConfig} />}
+          {activeTab === "history" && <HistoryPage />}
           {activeTab === "diagnostics" && <DiagnosticsPage />}
         </main>
         <Footer version={vaultStatus?.version} />

@@ -2482,6 +2482,8 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+ "windows 0.61.3",
+ "windows-collections",
  "windows-sys 0.61.2",
  "zeroize",
 ]

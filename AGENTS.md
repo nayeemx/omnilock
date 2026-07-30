@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Version**: 0.0.31 (unreleased, ownership-based rescue fix v2 — enable SeTakeOwnershipPrivilege)
-- **Last Updated**: 2026-07-29
-- **Git**: working on main, uncommitted fixes
+- **Version**: 0.0.32 (unreleased, with file-unlock child-ACL bugfix)
+- **Last Updated**: 2026-07-30
+- **Git**: working on main, uncommitted fixes (file-unlock child ACL fix + AGENTS.md update)
 
 ---
 
@@ -24,20 +24,12 @@
 
 ---
 
-## What Was Just Done (v0.0.28 → v0.0.29)
+## What Was Just Done (This Session — File-Unlock Child ACL Fix)
 
-1. **Deadlock fix in `logger.rs`** — `logger::init()` no longer calls `log()` while holding the mutex. This was causing v0.0.25+ to silently hang at startup with no window and a 0-byte log file.
-2. **Removed diagnostic MessageBoxW** — The 3 debugging dialogs added in v0.0.28 are no longer needed since root cause is confirmed.
-3. **Fallback updater endpoints** — Added `nayeemx.github.io/omnilock/latest.json` as a secondary endpoint after the primary `raw.githubusercontent.com` endpoint. If one is blocked by firewall, the other still works.
-4. **Version bumped** to v0.0.29.
-5. **Rescue mode & ACL ownership fix in `file_locker.rs`** — When a DENY Everyone ACE is so restrictive that `GetNamedSecurityInfoW` returns ACCESS_DENIED (err=5), the code now:
-   - Calls `SetNamedSecurityInfoW(OWNER_SECURITY_INFORMATION)` to take ownership first
-   - Then retries reading the DACL
-   - When all original ACEs were DENY Everyone (filtered list empty), creates ALLOW ACEs for current user + Administrators instead of an empty DACL
-6. **Service binary path fix in `lib.rs`** — Now searches 3 locations: alongside exe, `resources/`, `_resources/` (Tauri 2 dev convention)
-7. **Service binary built** — `omnilock-svc.exe` and `omnilock-monitor.exe` compiled and placed in `src-tauri/resources/`
-8. **Drive lock detection fix in `diagnostics.rs`** — Parses actual `NoDrives` DWORD hex value instead of checking if key name exists in `reg query` output (was showing all drives as "Locked" when `NoDrives=0`)
-9. **Biometric reason display fix in `DiagnosticsPage.tsx`** — `reason` text now only shown when hardware is NOT available, avoiding confusion (e.g., "Windows Biometric Service is not running" while showing green checkmarks)
+1. **File-unlock bug discovered & fixed**: Unlocking a folder restored the folder's own ACL (user+Admins+SYSTEM) but **child files inside** retained the inherited restricted DACL (Admins+SYSTEM only) from when the folder was locked — they remained inaccessible.
+   - **Root cause**: `SetNamedSecurityInfoW` on the folder alone does not retroactively reset inheritance on existing child files that received explicit ACEs during lock propagation.
+   - **Fix (app `file_locker.rs`)**: `unlock_folder` now calls `unlock_children_recursive()` — walks all child files, checks if still locked (owner=SYSTEM), calls `remove_safe_lock` on each.
+   - **Fix (service `acl.rs`)**: `remove_lock` now calls `remove_children_recursive()` — same recursive reset for child files when path is a directory.
 
 ---
 
@@ -52,6 +44,8 @@
 | Service accepts any password | Bare SHA-256 with no salt, no hash file = accept | Vault-based verification (Argon2id + AES-256-GCM) in `service/src/vault.rs` |
 | Race condition on pipe read | `sleep(300ms)` guess | `FlushFileBuffers` + retry loop with 5s timeout |
 | Unlock doesn't remove DENY ACL | `REVOKE_ACCESS` mode doesn't remove DENY ACEs | Filter DACL entries, rebuild without DENY for Everyone |
+| DENY Everyone permanently locks files | Windows ignores owner WRITE_DAC right when DENY Everyone with `GENERIC_ALL` is set | Replaced with owner=SYSTEM + restricted DACL (no DENY). Administrators recoverable via `SeTakeOwnershipPrivilege` |
+| **File-unlock: folder accessible but children still locked** | `SetNamedSecurityInfoW` on folder doesn't reset existing inherited ACEs on child files | Recursive `unlock_children_recursive`/`remove_children_recursive` walks children and resets each |
 | Weather inaccurate | wttr.in API data not accurate for Bangladesh | Switched to Open-Meteo API (ECMWF/NOAA models) |
 
 ---
@@ -133,7 +127,8 @@ omnilock/
 │       ├── process_guard.rs   # Process monitor + suspension
 │       ├── system_monitor.rs  # CPU/RAM/GPU/Network stats + weather
 │       ├── logger.rs          # Timestamped operation logger
-│       └── diagnostics.rs     # Live health checks for ACL/biometric/service
+│       ├── diagnostics.rs     # Live health checks for ACL/biometric/service
+│       └── shell_access.rs    # Native COM Explorer path detection (IShellWindows)
 ├── service/              # Windows service (ACL enforcement daemon)
 │   └── src/
 │       ├── bin/svc.rs    # Main service (named pipe server)
@@ -173,6 +168,36 @@ Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
 
 ---
 
+## File Icon Overlay: Research & Decision (Preserved)
+
+**Problem**: `IShellIconOverlayIdentifier` COM Shell Extension requires an EV-signed DLL. No free workaround exists for individual file overlays.
+
+**Solution found**: Use the **Windows Cloud Files API** (WinRT `Windows.Storage.Provider`) to add a "Status" column in Explorer. This is the same approach OneDrive, Google Drive, and Nextcloud use. It:
+- Shows an **icon + text** per file in the Status column
+- Has **no 15-overlay limit** (per-file property, not global slot)
+- Requires **no EV cert** (WinRT, not classic COM overlay)
+- Works on **Windows 10 1709+**
+- Supports **multiple state icons** (locked, shared, etc.)
+
+### Implementation path
+1. **Register a sync root** for the vault folder via `StorageProviderSyncRootManager.Register()` or registry
+2. **Define custom property definitions** with icon resources (lock.png, unlock.png)
+3. **Update per-file state** via `StorageProviderItemProperties.SetAsync()` when lock status changes
+4. Explorer auto-adds the Status column with padlock icon
+
+### Requirement
+Sync root registration is officially gated behind **MSIX packaging** (Desktop Bridge/Centennial). Tauri currently builds a standard NSIS/installer.
+- **Option A**: Wrap the Tauri build in MSIX → full Cloud Files API support (weeks of packaging work)
+- **Option B**: Registry-only sync root registration (hacky, no MSIX) → Status column may not appear
+- **Option C**: Accept folder-only `desktop.ini` icons + tray notifications for files
+
+### Research references
+- Microsoft Cloud Mirror sample: https://github.com/Microsoft/Windows-classic-samples/tree/master/Samples/CloudMirror
+- Nextcloud implementation (lock state in Status column): https://github.com/nextcloud/desktop/issues/4854
+- Cloud Files API docs: https://learn.microsoft.com/en-us/windows/win32/cfapi/build-a-cloud-file-sync-engine
+
+---
+
 ## Instructions for Next Session
 
 1. Read this file first
@@ -183,3 +208,34 @@ Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
 6. When done, update this file before finishing
 7. Follow `design.md` for any UI work
 8. Version numbering: sequential patch bumps (0.0.29 → 0.0.30 → ...)
+
+---
+
+## Next Session: Continue from Here
+
+### Where we left off
+- **Bug fixed**: File-unlock child ACL inheritance gap — unlocking a folder now recursively resets ACLs on child files (`unlock_children_recursive` in `file_locker.rs`, `remove_children_recursive` in `acl.rs`)
+- **Build**: Production build `OmniLock_0.0.32_x64-setup.exe` has been built and signed with the auto-updater key
+- **Uncommitted changes**: The binary fix + AGENTS.md update are uncommitted. The new recursive-fix code has been written but **not yet built into a new installer**
+
+### Suggested next steps
+1. **Build + sign a new installer** with the child-ACL fix included (`npm run tauri build`, then sign, update `latest.json`)
+2. **Test the fix** end-to-end on Windows: lock a folder, verify files inside are inaccessible, unlock the folder, verify files inside are accessible
+3. **Consider new features** from the backlog (Cloud Files API Status Column, USB removal lock, context menu, etc.) — see the "Feature ideas" notes preserved above
+
+### Priority issues to investigate
+- The file-unlock fix is **not yet built into a signed installer** — current `latest.json` points to the pre-fix build
+- Cloud Files API (`StorageProviderItemProperties.SetAsync()`) likely fails for non-MSIX apps; `cloud_status.rs` may need a fallback mechanism
+
+### Feature backlog (from earlier research)
+
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| Shell context menu (right-click → lock/unlock) | Medium | COM DLL, no EV cert, moderate effort |
+| Lock history / audit trail UI | Low | Logger data exists, needs frontend page |
+| Bulk import/export lock rules | Low | Useful for power users |
+| Auto-lock on workstation idle | Medium | Already have idle detection, just needs folder re-lock trigger |
+| Lock on USB removal | Low | Hardware-triggered |
+| Drive lock (bitlocker-style) | Low | Skeleton exists in drive_locker.rs |
+| File version backup before lock | Medium | Prevent data loss from ACL corruption |
+| Cloud Files API Status Column | Medium | WinRT `StorageProviderItemProperties.SetAsync`, needs MSIX

@@ -1,7 +1,11 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use crate::logger;
 
 // ACL enforcement is handled by the Windows service via named pipe.
-// These functions only handle the NoDrives registry visibility toggle.
+// These functions handle the NoDrives registry visibility toggle + ACL on drive root.
 
 pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
     let root = format!("{}:\\", drive_letter);
@@ -13,11 +17,15 @@ pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
         r"reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer /v NoDrives /t REG_DWORD /d {} /f",
         calculate_nodrives_value(drive_letter)
     );
-
     crate::hidden_cmd("cmd")
         .args(["/C", &reg_cmd])
         .output()
         .map_err(|e| e.to_string())?;
+
+    if root != "C:\\" {
+        let _ = crate::file_locker::lock_folder(&root);
+        logger::log("DRIVE", &format!("Drive ACL set: {}", root));
+    }
 
     Ok(())
 }
@@ -49,6 +57,11 @@ pub fn unlock_drive(drive_letter: &str, remaining_locked: &[String]) -> Result<(
             .map_err(|e| e.to_string())?;
     }
 
+    if root != "C:\\" {
+        let _ = crate::file_locker::unlock_folder(&root);
+        logger::log("DRIVE", &format!("Drive ACL removed: {}", root));
+    }
+
     Ok(())
 }
 
@@ -67,4 +80,109 @@ pub fn list_available_drives() -> Vec<String> {
         }
     }
     drives
+}
+
+pub fn list_removable_drives() -> Vec<String> {
+    const DRIVE_REMOVABLE: u32 = 2;
+    let mut drives = Vec::new();
+    for letter in 'A'..='Z' {
+        let path = format!("{}:\\", letter);
+        if Path::new(&path).exists() {
+            let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+            unsafe {
+                let drive_type = windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(wide.as_ptr());
+                if drive_type == DRIVE_REMOVABLE {
+                    drives.push(letter.to_string());
+                }
+            }
+        }
+    }
+    drives
+}
+
+pub fn is_drive_present(drive_letter: &str) -> bool {
+    let path = format!("{}:\\", drive_letter);
+    Path::new(&path).exists()
+}
+
+static USB_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
+
+fn monitored_locked_drives() -> &'static Mutex<Vec<String>> {
+    static STORE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+type RelockCallback = Arc<dyn Fn() + Send + Sync>;
+
+fn usb_removed_callback() -> &'static Mutex<Option<RelockCallback>> {
+    static STORE: OnceLock<Mutex<Option<RelockCallback>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(None))
+}
+
+pub fn start_usb_removal_monitor() {
+    if USB_MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    std::thread::spawn(|| {
+        let mut known_drives: Vec<(String, bool)> = Vec::new();
+
+        loop {
+            if !USB_MONITOR_RUNNING.load(Ordering::SeqCst) {
+                break;
+            }
+
+            let removable = list_removable_drives();
+
+            for drive in &removable {
+                let present = is_drive_present(drive);
+                let known = known_drives.iter().any(|(d, _)| d == drive);
+
+                if !known {
+                    known_drives.push((drive.clone(), present));
+                } else if let Some(entry) = known_drives.iter_mut().find(|(d, _)| d == drive) {
+                    if entry.1 && !present {
+                        logger::log("USB", &format!("USB drive removed: {}", drive));
+
+                        let locked_drives = monitored_locked_drives()
+                            .lock()
+                            .map(|g| g.clone())
+                            .unwrap_or_default();
+
+                        if locked_drives.contains(drive) {
+                            logger::log("USB", &format!("Locked drive {} was removed!", drive));
+                            if let Ok(guard) = usb_removed_callback().lock() {
+                                if let Some(ref cb) = *guard {
+                                    cb();
+                                }
+                            }
+                        }
+                    }
+                    entry.1 = present;
+                }
+            }
+
+            known_drives.retain(|(d, _)| removable.contains(d));
+
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+
+        USB_MONITOR_RUNNING.store(false, Ordering::SeqCst);
+    });
+}
+
+pub fn stop_usb_removal_monitor() {
+    USB_MONITOR_RUNNING.store(false, Ordering::SeqCst);
+}
+
+pub fn set_usb_removal_callback(cb: RelockCallback) {
+    if let Ok(mut guard) = usb_removed_callback().lock() {
+        *guard = Some(cb);
+    }
+}
+
+pub fn set_monitored_locked_drives(drives: Vec<String>) {
+    if let Ok(mut guard) = monitored_locked_drives().lock() {
+        *guard = drives;
+    }
 }

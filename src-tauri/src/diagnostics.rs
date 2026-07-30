@@ -15,7 +15,7 @@ pub struct LockItemCheck {
     pub path: String,
     pub kind: String,
     pub exists: bool,
-    pub deny_ace_present: bool,
+    pub locked: bool,
     pub check_error: String,
 }
 
@@ -75,12 +75,12 @@ fn check_locked_items() -> Vec<LockItemCheck> {
                     item.target_id.clone()
                 };
                 let exists = std::path::Path::new(&path).exists();
-                let (deny_ace_present, check_error) = if !exists {
+                let (locked, check_error) = if !exists {
                     (false, "Path does not exist".to_string())
                 } else {
                     match crate::file_locker::verify_lock(&path) {
                         Ok(true) => (true, String::new()),
-                        Ok(false) => (false, "DENY ACE not found".to_string()),
+                        Ok(false) => (false, "owner is not SYSTEM".to_string()),
                         Err(e) => (false, e),
                     }
                 };
@@ -89,7 +89,7 @@ fn check_locked_items() -> Vec<LockItemCheck> {
                     path: item.target_id,
                     kind: item.target_type,
                     exists,
-                    deny_ace_present,
+                    locked,
                     check_error,
                 });
             }

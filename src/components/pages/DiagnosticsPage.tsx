@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { ShieldAlert, Fingerprint, HardDrive, FileLock2, Bug, RefreshCw, CheckCircle2, XCircle, AlertTriangle, Cog, Activity } from "lucide-react";
-import { getDiagnostics, type DiagnosticsDto } from "../../lib/tauri-bridge";
+import { ShieldAlert, Fingerprint, HardDrive, FileLock2, Bug, RefreshCw, CheckCircle2, XCircle, AlertTriangle, Cog, Activity, RefreshCcw, ShieldCheck, Menu } from "lucide-react";
+import { getDiagnostics, recoverAcl, installContextMenu, uninstallContextMenu, isContextMenuInstalled, type DiagnosticsDto } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 
 export function DiagnosticsPage() {
@@ -51,8 +51,8 @@ export function DiagnosticsPage() {
                 <div className="space-y-2">
                   {data.locked_items_check.map((item, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs border-b border-surface-border pb-1 last:border-0">
-                      {item.deny_ace_present
-                        ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--success)" }} />
+                      {item.locked
+                        ? <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--success)" }} />
                         : <XCircle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--destructive)" }} />}
                       <span className="text-[10px] uppercase text-[color:var(--muted-foreground)]">{item.kind}</span>
                       <span className="font-mono truncate flex-1">{item.path}</span>
@@ -119,7 +119,135 @@ export function DiagnosticsPage() {
               )}
             </div>
           </div>
+
+          <ContextMenuSection />
+
+          <div className="glass rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
+              <ShieldCheck className="w-5 h-5 text-[color:var(--warning)]" />
+              <h3 className="font-semibold">Recover ACL</h3>
+              <span className="text-xs text-[color:var(--muted-foreground)]">Fix corrupted permissions on files/folders damaged by old DENY Everyone locks</span>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-[color:var(--muted-foreground)]">
+                This utility force-replaces the ACL on any file or folder with known-good permissions (current user + Administrators + SYSTEM full access). Use it if a locked item became inaccessible even to Administrators.
+              </p>
+              <RecoverAclForm />
+            </div>
+          </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function ContextMenuSection() {
+  const [installed, setInstalled] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    isContextMenuInstalled().then(setInstalled).catch(() => setInstalled(false));
+  }, []);
+
+  const handleInstall = async () => {
+    setLoading(true);
+    setMsg("");
+    try {
+      const result = await installContextMenu();
+      setInstalled(true);
+      setMsg(result);
+    } catch (e: any) {
+      setMsg("Failed: " + e);
+    }
+    setLoading(false);
+  };
+
+  const handleUninstall = async () => {
+    setLoading(true);
+    setMsg("");
+    try {
+      const result = await uninstallContextMenu();
+      setInstalled(false);
+      setMsg(result);
+    } catch (e: any) {
+      setMsg("Failed: " + e);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="glass rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
+        <Menu className="w-5 h-5 text-[color:var(--primary)]" />
+        <h3 className="font-semibold">Shell Context Menu</h3>
+        <span className="text-xs text-[color:var(--muted-foreground)]">Right-click Lock/Unlock in Explorer</span>
+        {installed !== null && (
+          <span className={`ml-auto text-xs flex items-center gap-1 ${installed ? 'text-[color:var(--success)]' : 'text-[color:var(--muted-foreground)]'}`}>
+            {installed ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+            {installed ? "Installed" : "Not installed"}
+          </span>
+        )}
+      </div>
+      <div className="p-5 space-y-3">
+        <p className="text-xs text-[color:var(--muted-foreground)]">
+          Registers "Lock with OmniLock" and "Unlock with OmniLock" in the right-click context menu for files, folders, and drives in Windows Explorer.
+        </p>
+        <div className="flex items-center gap-3">
+          <button onClick={handleInstall} disabled={loading || installed === true}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
+                  style={{ background: "var(--gradient-brand)" }}>
+            {loading ? "Working..." : "Install Context Menu"}
+          </button>
+          <button onClick={handleUninstall} disabled={loading || installed === false}
+                  className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active disabled:opacity-40">
+            {loading ? "Working..." : "Uninstall"}
+          </button>
+        </div>
+        {msg && <div className="text-xs text-[color:var(--muted-foreground)]">{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
+function RecoverAclForm() {
+  const [path, setPath] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleRecover = async () => {
+    if (!path.trim()) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const msg = await recoverAcl(path.trim());
+      setResult({ ok: true, msg });
+    } catch (e: any) {
+      setResult({ ok: false, msg: String(e) });
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          value={path}
+          onChange={e => setPath(e.target.value)}
+          placeholder="Enter full path to file or folder (e.g. C:\Users\me\locked-folder)"
+          className="flex-1 px-3 py-2 rounded-lg bg-surface border border-[color:var(--border)] text-sm font-mono outline-none focus:border-[color:var(--primary)]"
+          onKeyDown={e => { if (e.key === "Enter") handleRecover(); }}
+        />
+        <button onClick={handleRecover} disabled={loading || !path.trim()}
+                className="px-4 py-2 rounded-lg text-sm border border-[color:var(--border)] flex items-center gap-2 hover:bg-surface disabled:opacity-40">
+          <RefreshCcw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Recovering..." : "Recover ACL"}
+        </button>
+      </div>
+      {result && (
+        <div className={`p-3 rounded-lg text-sm ${result.ok ? "bg-[color:var(--success)]/15 text-[color:var(--success)]" : "bg-[color:var(--destructive)]/15 text-[color:var(--destructive)]"} border ${result.ok ? "border-[color:var(--success)]/30" : "border-[color:var(--destructive)]/30"}`}>
+          {result.msg}
+        </div>
       )}
     </div>
   );
