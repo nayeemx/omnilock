@@ -128,6 +128,10 @@ export async function recoverAcl(path: string): Promise<string> {
   return invoke("cmd_recover_acl", { path });
 }
 
+export async function forceUnlock(path: string): Promise<string> {
+  return invoke("cmd_force_unlock", { path });
+}
+
 export async function generateTotpSecret(): Promise<string> {
   return invoke("cmd_generate_totp");
 }
@@ -222,10 +226,6 @@ export async function widgetUnlock(password: string): Promise<void> {
   return invoke("cmd_widget_unlock", { password });
 }
 
-export async function widgetListLocked(): Promise<{ target_type: string; target_id: string; display_name: string }[]> {
-  return invoke("cmd_widget_list_locked");
-}
-
 export async function checkForUpdates(): Promise<{ available: boolean; version?: string; notes?: string } | null> {
   try {
     const update = await check();
@@ -304,10 +304,6 @@ export async function githubPollToken(
 
 export async function githubGetStatus(): Promise<GitHubSyncStatusDto> {
   return invoke("cmd_github_get_status");
-}
-
-export async function githubConnectToken(token: string): Promise<GitHubSyncStatusDto> {
-  return invoke("cmd_github_connect_token", { token });
 }
 
 export async function githubDisconnect(): Promise<void> {
@@ -468,10 +464,6 @@ export async function importConfig(jsonData: string, merge?: boolean): Promise<s
   return invoke("cmd_import_config", { jsonData, merge: merge ?? true });
 }
 
-export async function listBackups(path: string): Promise<[string, number][]> {
-  return invoke("cmd_list_backups", { path });
-}
-
 export interface HistoryEntry {
   timestamp: string;
   component: string;
@@ -480,8 +472,4 @@ export interface HistoryEntry {
 
 export async function getLockHistory(maxEntries?: number): Promise<HistoryEntry[]> {
   return invoke("cmd_get_lock_history", { maxEntries: maxEntries ?? null });
-}
-
-export async function restoreBackup(backupPath: string, targetPath: string): Promise<string> {
-  return invoke("cmd_restore_backup", { backupPath, targetPath });
 }

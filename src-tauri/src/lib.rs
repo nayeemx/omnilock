@@ -459,6 +459,21 @@ fn cmd_recover_acl(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn cmd_force_unlock(path: String) -> Result<String, String> {
+    logger::log("FORCE_UNLOCK", &format!("force_unlock start: {}", path));
+    match file_locker::force_unlock(&path) {
+        Ok(()) => {
+            logger::log("FORCE_UNLOCK", &format!("force_unlock ok: {}", path));
+            Ok("force_unlocked".to_string())
+        }
+        Err(e) => {
+            logger::log("FORCE_UNLOCK", &format!("force_unlock failed: {} err={}", path, e));
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
 fn cmd_list_backups(path: String) -> Result<Vec<(String, u64)>, String> {
     file_locker::list_backups(&path)
 }
@@ -1357,6 +1372,7 @@ pub fn run() {
             cmd_remove_locked_app,
             cmd_rescue_unlock,
             cmd_recover_acl,
+            cmd_force_unlock,
             cmd_list_backups,
             cmd_restore_backup,
             cmd_generate_totp,

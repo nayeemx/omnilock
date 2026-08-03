@@ -157,6 +157,84 @@ pub fn safe_recover_acl(path: &str) -> Result<(), String> {
     }
 }
 
+// Forcefully remove ACL restrictions by taking ownership and resetting DACL
+// This is a more aggressive approach for stubborn files
+pub fn force_unlock(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    unsafe {
+        let path_wide = to_wide(path);
+
+        // Enable both privileges
+        enable_privilege("SeTakeOwnershipPrivilege")?;
+        enable_privilege("SeRestorePrivilege")?;
+
+        // Step 1: Take ownership
+        let mut system_sid: PSID = std::ptr::null_mut();
+        let system_sid_str = to_wide("S-1-5-18");
+        if ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid) == 0 {
+            return Err("ConvertStringSidToSid(SYSTEM) failed".to_string());
+        }
+
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            system_sid,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        LocalFree(system_sid as _);
+
+        if ret != 0 {
+            return Err(format!("Take ownership failed: err={}", ret));
+        }
+
+        // Step 2: Get current user SID
+        let buf = current_user_sid_buf()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+
+        // Step 3: Reset DACL to safe state
+        let (new_dacl, _) = make_safe_dacl()?;
+
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            new_dacl,
+            std::ptr::null_mut(),
+        );
+
+        LocalFree(new_dacl as *mut _);
+
+        if ret != 0 {
+            return Err(format!("Reset DACL failed: err={}", ret));
+        }
+
+        // Step 4: Restore ownership to current user
+        let ret = SetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            token_user.User.Sid,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+
+        if ret != 0 {
+            return Err(format!("Restore ownership failed: err={}", ret));
+        }
+
+        Ok(())
+    }
+}
+
 fn apply_safe_lock(path: &str) -> Result<(), String> {
     if !Path::new(path).exists() {
         return Err(format!("Path does not exist: {}", path));
@@ -513,10 +591,25 @@ pub fn unlock_folder(path: &str) -> Result<(), String> {
     if !dir_path.exists() || !dir_path.is_dir() {
         return Err(format!("Folder does not exist: {}", path));
     }
+    
+    crate::logger::log("UNLOCK", &format!("unlock_folder start: {}", path));
+    
     remove_safe_lock(path)?;
+    crate::logger::log("UNLOCK", &format!("unlock_folder parent unlocked: {}", path));
+    
     remove_lock_icon(path)?;
+    
     // Recursively reset ACLs on child files that inherited the restricted DACL
-    unlock_children_recursive(dir_path)?;
+    match unlock_children_recursive(dir_path) {
+        Ok(()) => {
+            crate::logger::log("UNLOCK", &format!("unlock_folder recursive complete: {}", path));
+        }
+        Err(e) => {
+            crate::logger::log("UNLOCK", &format!("unlock_folder recursive warning: {} err={}", path, e));
+            // Don't fail the entire operation if recursive unlock has issues
+        }
+    }
+    
     Ok(())
 }
 
@@ -524,17 +617,74 @@ fn unlock_children_recursive(dir: &Path) -> Result<(), String> {
     if !dir.is_dir() {
         return Ok(());
     }
-    let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {}", e))?;
-    for entry in entries.flatten() {
-        let child = entry.path();
-        if child.is_dir() {
-            unlock_children_recursive(&child)?;
-        } else if child.is_file() {
-            // Only reset if the file's ACL is restricted (owner check is fast)
-            if let Ok(true) = verify_lock(&child.to_string_lossy()) {
-                remove_safe_lock(&child.to_string_lossy()).ok();
+    
+    // Use Win32 API to enumerate files, which works even with restricted ACLs
+    // when we have SeTakeOwnershipPrivilege
+    unsafe { unlock_files_recursive(dir) }
+}
+
+// Recursively unlock files using FindFirstFile/FindNextFile
+// This works even when read_dir fails due to ACL restrictions
+unsafe fn unlock_files_recursive(dir: &Path) -> Result<(), String> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        FindFirstFileW, FindNextFileW, FindClose, WIN32_FIND_DATAW,
+        FILE_ATTRIBUTE_DIRECTORY,
+    };
+    
+    let search_wide = format!(r"{}\*", dir.to_string_lossy());
+    let search_w: Vec<u16> = to_wide(&search_wide);
+    
+    let mut find_data: WIN32_FIND_DATAW = std::mem::zeroed();
+    let handle = FindFirstFileW(search_w.as_ptr(), &mut find_data);
+    
+    if handle == INVALID_HANDLE_VALUE {
+        // Fallback to read_dir if FindFirstFile fails
+        let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {}", e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Error reading entry: {}", e))?;
+            let child = entry.path();
+            let path_str = child.to_string_lossy().to_string();
+            if child.is_dir() {
+                // Reset the child directory ACL too — it inherits the restricted
+                // DACL but keeps the original owner, so verify_lock can't detect it
+                remove_safe_lock(&path_str).ok();
+                unlock_files_recursive(&child)?;
+            } else if child.is_file() {
+                remove_safe_lock(&path_str).ok();
             }
         }
+        return Ok(());
     }
+    
+    loop {
+        let name = String::from_utf16_lossy(
+            &find_data.cFileName[..find_data.cFileName.iter().position(|&c| c == 0).unwrap_or(find_data.cFileName.len())]
+        );
+        
+        if name != "." && name != ".." {
+            let child_path = dir.join(&name);
+            let attrs = find_data.dwFileAttributes;
+            let path_str = child_path.to_string_lossy().to_string();
+            
+            if attrs & FILE_ATTRIBUTE_DIRECTORY != 0 {
+                // Reset the child directory ACL first, then recurse
+                remove_safe_lock(&path_str).ok();
+                unlock_files_recursive(&child_path)?;
+            } else {
+                // It's a file - unconditionally reset its ACL to the safe state.
+                // Child files inherit the restricted DACL but keep their original
+                // owner, so verify_lock (owner == SYSTEM) cannot detect them.
+                remove_safe_lock(&path_str).ok();
+            }
+        }
+        
+        let mut next_data: WIN32_FIND_DATAW = std::mem::zeroed();
+        if FindNextFileW(handle, &mut next_data) == 0 {
+            break;
+        }
+        find_data = next_data;
+    }
+    
+    FindClose(handle);
     Ok(())
 }

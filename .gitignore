@@ -12,3 +12,5 @@ signing-keys/
 *.user
 *.userosscache
 *.sln.docstates
+.agnes/
+

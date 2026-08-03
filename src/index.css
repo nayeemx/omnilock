@@ -35,6 +35,7 @@
   --violet: oklch(0.55 0.22 295);
   --success: oklch(0.65 0.17 155);
   --warning: oklch(0.72 0.17 75);
+  --info: oklch(0.62 0.15 250);
 
   /* Surface layers for overlays */
   --surface: oklch(0 0 0 / 0.03);
@@ -76,6 +77,7 @@
   --violet: oklch(0.65 0.22 295);
   --success: oklch(0.75 0.17 155);
   --warning: oklch(0.82 0.17 75);
+  --info: oklch(0.72 0.15 250);
 
   --surface: oklch(1 0 0 / 0.03);
   --surface-hover: oklch(1 0 0 / 0.06);

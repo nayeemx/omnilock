@@ -95,7 +95,9 @@ pub fn encrypt_vault(config: &VaultConfig, password: &str) -> Result<(), String>
     };
 
     let serialized = serde_json::to_vec(&encrypted).map_err(|e| e.to_string())?;
-    fs::write(vault_path(), serialized).map_err(|e| e.to_string())?;
+    fs::write(vault_path(), serialized.clone()).map_err(|e| e.to_string())?;
+
+    crate::service_client::sync_vault_to_service(&serialized);
     Ok(())
 }
 

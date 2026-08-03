@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Version**: 0.0.32 (unreleased, with file-unlock child-ACL bugfix)
-- **Last Updated**: 2026-07-30
-- **Git**: working on main, uncommitted fixes (file-unlock child ACL fix + AGENTS.md update)
+- **Version**: 0.0.33 (released installer + signed latest.json; includes file-unlock child-ACL bugfix v3 + force_unlock)
+- **Last Updated**: 2026-08-03
+- **Git**: working on main, uncommitted changes (v0.0.33 release: ACL fix v3, version bump, widget capability, dead-export cleanup)
 
 ---
 
@@ -24,12 +24,20 @@
 
 ---
 
-## What Was Just Done (This Session — File-Unlock Child ACL Fix)
+## What Was Just Done (This Session — File-Unlock Child ACL Fix v3)
 
-1. **File-unlock bug discovered & fixed**: Unlocking a folder restored the folder's own ACL (user+Admins+SYSTEM) but **child files inside** retained the inherited restricted DACL (Admins+SYSTEM only) from when the folder was locked — they remained inaccessible.
-   - **Root cause**: `SetNamedSecurityInfoW` on the folder alone does not retroactively reset inheritance on existing child files that received explicit ACEs during lock propagation.
-   - **Fix (app `file_locker.rs`)**: `unlock_folder` now calls `unlock_children_recursive()` — walks all child files, checks if still locked (owner=SYSTEM), calls `remove_safe_lock` on each.
-   - **Fix (service `acl.rs`)**: `remove_lock` now calls `remove_children_recursive()` — same recursive reset for child files when path is a directory.
+1. **File-unlock bug discovered & fixed (v2)**: The initial fix had an issue where `read_dir` would fail on locked folders due to ACL restrictions, preventing recursive traversal.
+   - **Root cause v2**: Windows `read_dir` fails with access denied when trying to enumerate files in a locked folder, even with `SeTakeOwnershipPrivilege`.
+   - **Fix (app `file_locker.rs`)**: Replaced `read_dir` with Win32 `FindFirstFileW`/`FindNextFileW` API which works even with restricted ACLs when proper privileges are enabled.
+   - **Fix (service `acl.rs`)**: Same fix applied to service-side recursive unlock.
+   - **New feature**: Added `force_unlock` command that uses both `SeTakeOwnershipPrivilege` and `SeRestorePrivilege` for stubborn files.
+
+2. **Root cause of v2 NOT WORKING (v3, this session)**: The v2 recursive walk gated each child on `verify_lock()` (owner == SYSTEM). But when locking a *folder*, only the folder itself gets owner=SYSTEM; child files/dirs keep their original owner and merely **inherit the restricted DACL**. So `verify_lock(child)` returned `false`, every child was skipped, and files inside the folder stayed locked — exactly what the user reported ("can't access the file inside the folder").
+   - **Fix (app `file_locker.rs`)**: `unlock_files_recursive()` now unconditionally resets every child's ACL to the safe state (calls `remove_safe_lock` on all files and dirs) instead of gating on `verify_lock`. Child dirs are reset then recursed.
+   - **Fix (service `acl.rs`)**: `remove_files_recursive()` likewise unconditionally calls `remove_lock` on every child. For child dirs, `remove_lock` already recurses internally, so no extra recursion is done.
+   - **Also fixed**: v2 never compiled — `unlock_files_recursive`/`remove_files_recursive` are `unsafe fn` but were called from safe wrappers without an `unsafe` block. Both crates now pass `cargo check`.
+
+3. **Testing script created**: `test_acl_recursive_unlock.ps1` provides a test framework for verifying the fix.
 
 ---
 
@@ -46,6 +54,7 @@
 | Unlock doesn't remove DENY ACL | `REVOKE_ACCESS` mode doesn't remove DENY ACEs | Filter DACL entries, rebuild without DENY for Everyone |
 | DENY Everyone permanently locks files | Windows ignores owner WRITE_DAC right when DENY Everyone with `GENERIC_ALL` is set | Replaced with owner=SYSTEM + restricted DACL (no DENY). Administrators recoverable via `SeTakeOwnershipPrivilege` |
 | **File-unlock: folder accessible but children still locked** | `SetNamedSecurityInfoW` on folder doesn't reset existing inherited ACEs on child files | Recursive `unlock_children_recursive`/`remove_children_recursive` walks children and resets each |
+| **File-unlock: children skipped even with recursion (v2 dead)** | Recursion gated on `verify_lock` (owner == SYSTEM), but children inherit the restricted DACL while keeping their original owner → `false` for every child | v3: unconditionally reset every child (files + dirs) instead of gating on `verify_lock` |
 | Weather inaccurate | wttr.in API data not accurate for Bangladesh | Switched to Open-Meteo API (ECMWF/NOAA models) |
 
 ---
@@ -150,6 +159,7 @@ Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
 
 ## Version History
 
+- **0.0.33** — File-unlock child ACL fix v3: unconditional recursive reset of every child file/dir (v2 gated on `verify_lock` which skipped all children). Widget capability gap fix, dead bridge export cleanup, `--info` CSS var, `sync_vault_to_service` wiring. Signed installer + updated `latest.json`.
 - **0.0.29** — Deadlock fix: `logger::init()` no longer deadlocks on non-reentrant `Mutex`. Fallback updater endpoints. Removed debug MessageBoxW.
 - **0.0.28** — Added startup MessageBoxW for diagnostics. (Same deadlock bug, never produced working window.)
 - **0.0.27** — Setup hook always returns `Ok(())`, no unwrap/panic, step logging. (Same deadlock bug.)
@@ -214,18 +224,21 @@ Sync root registration is officially gated behind **MSIX packaging** (Desktop Br
 ## Next Session: Continue from Here
 
 ### Where we left off
-- **Bug fixed**: File-unlock child ACL inheritance gap — unlocking a folder now recursively resets ACLs on child files (`unlock_children_recursive` in `file_locker.rs`, `remove_children_recursive` in `acl.rs`)
-- **Build**: Production build `OmniLock_0.0.32_x64-setup.exe` has been built and signed with the auto-updater key
-- **Uncommitted changes**: The binary fix + AGENTS.md update are uncommitted. The new recursive-fix code has been written but **not yet built into a new installer**
+- **Bug fixed**: File-unlock child ACL inheritance gap **v3** — root cause: v2 gated child reset on `verify_lock` (owner == SYSTEM), but child files inherit the restricted DACL while keeping their original owner, so every child was skipped. v3 unconditionally resets every child file/dir ACL in both `file_locker.rs` and service `acl.rs`.
+- **Also fixed**: v2 never compiled (unsafe fn called without `unsafe` block). Both crates pass `cargo check`.
+- **New feature**: Added `force_unlock` command for stubborn files that resist normal unlock.
+- **Release v0.0.33 built & signed**: `OmniLock_0.0.33_x64-setup.exe` (sha256 `60911049...0A9A8`), signature written to `latest.json`. The old `OmniLockService` was stopped (needs elevation) to allow replacing `omnilock-svc.exe`.
+- **Uncommitted changes**: v0.0.33 release (ACL fix v3, version bump to 0.0.33, widget capability gap fix, dead bridge export cleanup, `--info` CSS var, `sync_vault_to_service` wiring, AGENTS.md update)
 
 ### Suggested next steps
-1. **Build + sign a new installer** with the child-ACL fix included (`npm run tauri build`, then sign, update `latest.json`)
-2. **Test the fix** end-to-end on Windows: lock a folder, verify files inside are inaccessible, unlock the folder, verify files inside are accessible
+1. **Test the fix** end-to-end on Windows: lock a folder, verify files inside are inaccessible, unlock the folder, verify files inside are accessible. Use `test_acl_recursive_unlock.ps1` as a framework.
+2. **Push v0.0.33** to GitHub + create the release so auto-update serves the new build (`gh release create v0.0.33 ...` + upload installer).
 3. **Consider new features** from the backlog (Cloud Files API Status Column, USB removal lock, context menu, etc.) — see the "Feature ideas" notes preserved above
 
 ### Priority issues to investigate
-- The file-unlock fix is **not yet built into a signed installer** — current `latest.json` points to the pre-fix build
+- **Upload the v0.0.33 installer to the GitHub release** — `latest.json` points to the release URL but the asset is not uploaded yet
 - Cloud Files API (`StorageProviderItemProperties.SetAsync()`) likely fails for non-MSIX apps; `cloud_status.rs` may need a fallback mechanism
+- Test the `force_unlock` command on stubborn files
 
 ### Feature backlog (from earlier research)
 

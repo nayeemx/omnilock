@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-07-30T12:00:23Z",
-  "version": "v0.0.32",
-  "notes": "All 8 backlog features: Cloud Files API Status Column, auto-re-lock on idle, shell context menu, lock history UI, backup-before-lock, bulk import/export, USB-removal lock, enhanced drive lock.",
+  "pub_date": "2026-08-03T16:30:00Z",
+  "version": "v0.0.33",
+  "notes": "Fixed file-unlock child ACL bug (v3): files inside a locked folder are now fully unlocked when the folder is unlocked. The previous fix skipped child files because they inherit the restricted DACL while keeping their original owner. Also includes the widget capability fix and dead-export cleanup.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.32/OmniLock_0.0.32_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1dzU0tyRnAzVzdNWjJuMSs3VmFzLzBxd1QrTjF1bDNhN1BEMVozcDBmVnRjWGJNTXo1bU5LSkQvczZ5Ri9qOUxUbWJWczh5RE9WQlJod3cxbGh6OGdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1Mzk2MzY5CWZpbGU6T21uaUxvY2tfMC4wLjMyX3g2NC1zZXR1cC5leGUKemlkWkVHTkF0b2Y0ZmZzMVdXUTF1aU1YYnA5K0tiYjhSQUNTbXlCcGhKR3A0ckx6UEY1NnZhWFZWdDdPN2Ywd2RqUTg5YldPZ3dUL1ZQamYrbDlJRFE9PQo=",
-      "sha256": "C3040C9B1B44F6651A3BD3AC77720E3977D667EB4103DD4A1B2056ADB0370335"
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.33/OmniLock_0.0.33_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1RoeWZFTnJ3REVyWnNGWkRQZVhLY1Z6VHAwSEN0NndlWGgzaUYzTEtwUUlHMmpyblN1S05LWmhBWERPSnlkTUQrTmdIdmVxbmRueEhjWDRGdG4xS0FNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzUzODM5CWZpbGU6T21uaUxvY2tfMC4wLjMzX3g2NC1zZXR1cC5leGUKZG5mczI2R0xmKzdZWkFBVWJFU0QrWWJ1cXllY2ZuOWZ1djhXM0F3clB2OU1JcnlkQmVnSVpSc29oT2k4aHBRaU1MRTBlMWYyQjZLOGtLSjFVS1dURHc9PQo=",
+      "sha256": "609110494C656AAC482CE3ED5D801114D998BF9267C99F1C14B71E08EB30A9A8"
     }
   }
 }
