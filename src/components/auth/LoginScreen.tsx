@@ -8,7 +8,7 @@ import {
   unlockSession, getSecurityQuestion, resetPassword,
   recoverWithKey, recoverWithUsbKey,
   githubStartDeviceFlow, githubPollToken, openExternalUrl,
-  checkBiometric, authenticateBiometric, biometricLogin,
+  checkBiometric, biometricLogin,
 } from "../../lib/tauri-bridge";
 import { Field } from "../shared/Field";
 
@@ -31,7 +31,6 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
     setBiometricLoading(true);
     setError("");
     try {
-      await authenticateBiometric("Verify identity to unlock OmniLock");
       await biometricLogin();
       await onUnlock();
     } catch (e: any) {

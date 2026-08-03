@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Version**: 0.0.33 (released installer + signed latest.json; includes file-unlock child-ACL bugfix v3 + force_unlock)
+- **Version**: 0.0.34 (released installer + signed latest.json; widget focus-steal fix + server-side Windows Hello enforcement)
 - **Last Updated**: 2026-08-03
-- **Git**: working on main, uncommitted changes (v0.0.33 release: ACL fix v3, version bump, widget capability, dead-export cleanup)
+- **Git**: working on main, uncommitted changes (v0.0.34 release: widget focus-steal fix, server-side Hello verification)
 
 ---
 
@@ -41,6 +41,19 @@
 
 ---
 
+## What Was Just Done (This Session — v0.0.34: Widget Focus-Steal + Server-Side Hello Enforcement)
+
+1. **Widget steals focus every 2s while working (fixed)**: `start_file_access_monitor` in `process_guard.rs` polls Explorer every 2s; for each locked folder open in Explorer it called `widget.show()` + `widget.set_focus()` **on every poll**. The widget is built `always_on_top(true)` (`lib.rs`), so it stole focus indefinitely while the user worked elsewhere.
+   - **Fix**: new `static PROMPTED_FOLDERS: OnceLock<Mutex<Vec<String>>>` in `process_guard.rs`; each folder only triggers the widget **once** (guard `!already_prompted` in the monitor loop). The flag is cleared (`clear_prompted_folder`) when the folder is relocked (time expiry / closed in Explorer) and when it's no longer open in Explorer, so it re-prompts the next time the user opens the folder.
+
+2. **Windows Hello verification now enforced server-side (security fix)**: `cmd_biometric_login` (`lib.rs`) previously loaded the DPAPI-protected master password (`biometric.token`) with **zero Hello verification** — the fingerprint prompt was only a client-side call anyone could skip. Any malicious invoke could grab the token directly.
+   - **Fix**: `cmd_biometric_login` now calls `biometric::authenticate_biometric("Verify identity to unlock OmniLock")` **inside the command** before loading the token (`lib.rs`). Removed the redundant client-side `authenticateBiometric` call in `LoginScreen.tsx` so there's a single server-enforced Hello dialog.
+   - **Why not build our own sensor driver**: Windows has no direct app API to fingerprint sensors (Synaptics/Goodix lock matching in hardware); the only legal path is the Windows Biometric Framework (WinBio) that Windows Hello wraps. Storing raw biometrics would be a severe bug — Windows Hello keeps an irreversible key in the TPM and matches only inside the secure enclave.
+
+3. **Release v0.0.34 built & signed**: `OmniLock_0.0.34_x64-setup.exe` (sha256 `6021CF20...CE2634`), signature written to `latest.json`. Service/monitor binaries unchanged from v0.0.33 (no service changes).
+
+---
+
 ## Known Errors & Fixes (Reference)
 
 | Error | Root Cause | Fix |
@@ -55,6 +68,8 @@
 | DENY Everyone permanently locks files | Windows ignores owner WRITE_DAC right when DENY Everyone with `GENERIC_ALL` is set | Replaced with owner=SYSTEM + restricted DACL (no DENY). Administrators recoverable via `SeTakeOwnershipPrivilege` |
 | **File-unlock: folder accessible but children still locked** | `SetNamedSecurityInfoW` on folder doesn't reset existing inherited ACEs on child files | Recursive `unlock_children_recursive`/`remove_children_recursive` walks children and resets each |
 | **File-unlock: children skipped even with recursion (v2 dead)** | Recursion gated on `verify_lock` (owner == SYSTEM), but children inherit the restricted DACL while keeping their original owner → `false` for every child | v3: unconditionally reset every child (files + dirs) instead of gating on `verify_lock` |
+| Widget steals focus while user works | Monitor polls Explorer every 2s and calls `widget.show()` + `set_focus()` every poll; widget is `always_on_top` | Prompt once per folder via `PROMPTED_FOLDERS` static; clear flag on relock/close |
+| Biometric token loadable without Hello | `cmd_biometric_login` loaded DPAPI token with no server-side verification; Hello prompt was client-only | Call `biometric::authenticate_biometric` inside `cmd_biometric_login` before loading token |
 | Weather inaccurate | wttr.in API data not accurate for Bangladesh | Switched to Open-Meteo API (ECMWF/NOAA models) |
 
 ---
@@ -159,6 +174,7 @@ Patch bumps: 0.0.1 → 0.0.2 → ... → 0.0.99 → 0.1.0
 
 ## Version History
 
+- **0.0.34** — Widget focus-steal fix (prompt once per folder via `PROMPTED_FOLDERS` static instead of every 2s poll). Server-side Windows Hello enforcement in `cmd_biometric_login` (token can no longer be loaded without a passing Hello check). Signed installer + updated `latest.json`.
 - **0.0.33** — File-unlock child ACL fix v3: unconditional recursive reset of every child file/dir (v2 gated on `verify_lock` which skipped all children). Widget capability gap fix, dead bridge export cleanup, `--info` CSS var, `sync_vault_to_service` wiring. Signed installer + updated `latest.json`.
 - **0.0.29** — Deadlock fix: `logger::init()` no longer deadlocks on non-reentrant `Mutex`. Fallback updater endpoints. Removed debug MessageBoxW.
 - **0.0.28** — Added startup MessageBoxW for diagnostics. (Same deadlock bug, never produced working window.)
@@ -224,19 +240,18 @@ Sync root registration is officially gated behind **MSIX packaging** (Desktop Br
 ## Next Session: Continue from Here
 
 ### Where we left off
-- **Bug fixed**: File-unlock child ACL inheritance gap **v3** — root cause: v2 gated child reset on `verify_lock` (owner == SYSTEM), but child files inherit the restricted DACL while keeping their original owner, so every child was skipped. v3 unconditionally resets every child file/dir ACL in both `file_locker.rs` and service `acl.rs`.
-- **Also fixed**: v2 never compiled (unsafe fn called without `unsafe` block). Both crates pass `cargo check`.
-- **New feature**: Added `force_unlock` command for stubborn files that resist normal unlock.
-- **Release v0.0.33 built & signed**: `OmniLock_0.0.33_x64-setup.exe` (sha256 `60911049...0A9A8`), signature written to `latest.json`. The old `OmniLockService` was stopped (needs elevation) to allow replacing `omnilock-svc.exe`.
-- **Uncommitted changes**: v0.0.33 release (ACL fix v3, version bump to 0.0.33, widget capability gap fix, dead bridge export cleanup, `--info` CSS var, `sync_vault_to_service` wiring, AGENTS.md update)
+- **Widget focus-steal fixed (v0.0.34)**: monitor prompted the always-on-top widget every 2s poll while a locked folder was open in Explorer. Now prompts once per folder via `PROMPTED_FOLDERS` static in `process_guard.rs`, clearing on relock/close.
+- **Server-side Windows Hello enforcement (v0.0.34)**: `cmd_biometric_login` now verifies via `biometric::authenticate_biometric` inside the command before loading the DPAPI token; client-side prompt removed from `LoginScreen.tsx`.
+- **Release v0.0.34 built & signed**: `OmniLock_0.0.34_x64-setup.exe` (sha256 `6021CF20...CE2634`), signature written to `latest.json`.
+- **Earlier (v0.0.33, committed & pushed)**: File-unlock child ACL fix v3, `force_unlock`, widget capability fix, dead bridge export cleanup, `--info` CSS var, `sync_vault_to_service` wiring.
 
 ### Suggested next steps
-1. **Test the fix** end-to-end on Windows: lock a folder, verify files inside are inaccessible, unlock the folder, verify files inside are accessible. Use `test_acl_recursive_unlock.ps1` as a framework.
-2. **Push v0.0.33** to GitHub + create the release so auto-update serves the new build (`gh release create v0.0.33 ...` + upload installer).
+1. **Push v0.0.34** to GitHub + create the release so auto-update serves the new build (`gh release create v0.0.34 ...` + upload installer + verify `latest.json` URL is live).
+2. **Test end-to-end on Windows**: lock a folder, verify widget prompts only once while working in another app, unlock, verify no re-focus. Verify Hello login now shows exactly one server-enforced prompt.
 3. **Consider new features** from the backlog (Cloud Files API Status Column, USB removal lock, context menu, etc.) — see the "Feature ideas" notes preserved above
 
 ### Priority issues to investigate
-- **Upload the v0.0.33 installer to the GitHub release** — `latest.json` points to the release URL but the asset is not uploaded yet
+- **Upload the v0.0.34 installer to the GitHub release** — `latest.json` points to the release URL but the asset is not uploaded yet
 - Cloud Files API (`StorageProviderItemProperties.SetAsync()`) likely fails for non-MSIX apps; `cloud_status.rs` may need a fallback mechanism
 - Test the `force_unlock` command on stubborn files
 

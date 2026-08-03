@@ -15,6 +15,7 @@ use crate::models::{LockedApp, UnlockTarget};
 static LOCKED_APPS: OnceLock<Mutex<Vec<LockedApp>>> = OnceLock::new();
 static LOCKED_FOLDERS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 static UNLOCKED_FOLDERS: OnceLock<Mutex<Vec<UnlockedFolderState>>> = OnceLock::new();
+static PROMPTED_FOLDERS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 static FOLDER_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -49,6 +50,14 @@ pub fn notify_folder_unlocked(path: &str) {
                 unlocked_at: Instant::now(),
             });
         }
+    }
+    clear_prompted_folder(path);
+}
+
+fn clear_prompted_folder(path: &str) {
+    if let Ok(mut guard) = PROMPTED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        let norm = normalize_path(path);
+        guard.retain(|p| normalize_path(p) != norm);
     }
 }
 
@@ -267,7 +276,12 @@ pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
                     .map(|g| g.iter().any(|u| normalize_path(&u.path) == norm_folder))
                     .unwrap_or(false);
 
-                if is_in_explorer && !already_unlocked {
+                let already_prompted = PROMPTED_FOLDERS.get_or_init(|| Mutex::new(Vec::new()))
+                    .lock()
+                    .map(|g| g.iter().any(|p| normalize_path(p) == norm_folder))
+                    .unwrap_or(false);
+
+                if is_in_explorer && !already_unlocked && !already_prompted {
                     let display_name = Path::new(folder)
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
@@ -289,6 +303,14 @@ pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
                         let _ = widget.show();
                         let _ = widget.set_focus();
                         let _ = widget.emit("unlock-target", &target);
+                    }
+
+                    // Only prompt once per folder, so the widget does not steal
+                    // focus on every 2s poll while the user works elsewhere.
+                    if let Ok(mut guard) = PROMPTED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+                        if !guard.iter().any(|p| normalize_path(p) == norm_folder) {
+                            guard.push(folder.clone());
+                        }
                     }
                 }
             }
@@ -329,8 +351,21 @@ pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
 
                 for i in to_relock.into_iter().rev() {
                     let uf = unlocked_guard.remove(i);
+                    clear_prompted_folder(&uf.path);
                     let _ = crate::file_locker::lock_folder(&uf.path);
                 }
+            }
+
+            // Forget prompt state for folders no longer open in Explorer, so
+            // they can prompt again the next time the user opens them.
+            if let Ok(mut guard) = PROMPTED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+                guard.retain(|p| {
+                    let norm = normalize_path(p);
+                    explorer_paths.iter().any(|e| {
+                        let ne = normalize_path(e);
+                        ne == norm || ne.starts_with(&format!("{}\\", norm))
+                    })
+                });
             }
 
             std::thread::sleep(std::time::Duration::from_secs(2));

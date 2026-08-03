@@ -1194,6 +1194,10 @@ fn cmd_toggle_biometric(state: State<'_, AppState>, enabled: bool, password: Opt
 #[tauri::command]
 async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     logger::log("BIOMETRIC", "biometric_login start");
+    let verified = biometric::authenticate_biometric("Verify identity to unlock OmniLock".to_string()).await?;
+    if !verified {
+        return Err("Windows Hello verification failed".to_string());
+    }
     let password = match biometric::load_biometric_token() {
         Ok(pw) => {
             logger::log("BIOMETRIC", "load_biometric_token ok");

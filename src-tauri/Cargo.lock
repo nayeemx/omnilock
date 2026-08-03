@@ -2455,7 +2455,7 @@ dependencies = [
 
 [[package]]
 name = "omnilock"
-version = "0.0.33"
+version = "0.0.34"
 dependencies = [
  "aes-gcm",
  "argon2",

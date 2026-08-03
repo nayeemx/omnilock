@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-08-03T16:30:00Z",
-  "version": "v0.0.33",
-  "notes": "Fixed file-unlock child ACL bug (v3): files inside a locked folder are now fully unlocked when the folder is unlocked. The previous fix skipped child files because they inherit the restricted DACL while keeping their original owner. Also includes the widget capability fix and dead-export cleanup.",
+  "pub_date": "2026-08-03T18:00:00Z",
+  "version": "v0.0.34",
+  "notes": "Fixed widget stealing focus every 2s while a locked folder is open in Explorer (now prompts once per folder). Windows Hello verification is now enforced server-side inside cmd_biometric_login, so the DPAPI token can no longer be loaded without a passing Hello check.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.33/OmniLock_0.0.33_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1RoeWZFTnJ3REVyWnNGWkRQZVhLY1Z6VHAwSEN0NndlWGgzaUYzTEtwUUlHMmpyblN1S05LWmhBWERPSnlkTUQrTmdIdmVxbmRueEhjWDRGdG4xS0FNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzUzODM5CWZpbGU6T21uaUxvY2tfMC4wLjMzX3g2NC1zZXR1cC5leGUKZG5mczI2R0xmKzdZWkFBVWJFU0QrWWJ1cXllY2ZuOWZ1djhXM0F3clB2OU1JcnlkQmVnSVpSc29oT2k4aHBRaU1MRTBlMWYyQjZLOGtLSjFVS1dURHc9PQo=",
-      "sha256": "609110494C656AAC482CE3ED5D801114D998BF9267C99F1C14B71E08EB30A9A8"
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.34/OmniLock_0.0.34_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1lsOS9lbE5ETjA1Um1hSS9MZDRta1AwRHlIS3JGbnQ2ZCt5Yk96d25xUUJ1Q0I0eHN4TXNBOURYSXZOQldKd1BnV3Jpa2NWZVl6dTZLeUlrRHVUTUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzYyMTY0CWZpbGU6T21uaUxvY2tfMC4wLjM0X3g2NC1zZXR1cC5leGUKRzRJaVB0b0tSdXZmcW1DSWhMTDlrR2E0L2VNWiswUXF0dUNPRU5JUGFGNTB4SmhOYjFyOFNTK1hRVUpPMUJtQ00za2xlTTBpNUV0UnZJeFpoNlZpREE9PQo=",
+      "sha256": "6021CF202B623E72A7E9C014FF1DB71457C70FB12B1A1AF68A0E217F5BCE2634"
     }
   }
 }
