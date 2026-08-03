@@ -4,6 +4,25 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.0.34] - 2026-08-03
+
+### Fixed
+- **Widget steals focus every 2s while working**: the file-access monitor prompted the always-on-top unlock widget on every 2s poll for each locked folder open in Explorer. Now prompts once per folder (`PROMPTED_FOLDERS` static in `process_guard.rs`), cleared on relock or when the folder closes in Explorer.
+- **Windows Hello bypassable**: `cmd_biometric_login` loaded the DPAPI-protected master password with no server-side verification; the Hello prompt was client-only. Verification (`authenticate_biometric`) now runs inside the command before the token is loaded, and the redundant client-side prompt was removed from `LoginScreen.tsx`.
+
+## [0.0.33] - 2026-08-03
+
+### Fixed
+- **File-unlock child ACL fix v3**: recursive unlock now unconditionally resets every child file/dir ACL (v2 gated children on `verify_lock`, but children inherit the restricted DACL while keeping their original owner, so all were skipped and files inside locked folders stayed inaccessible)
+- **v2 never compiled**: `unlock_files_recursive`/`remove_files_recursive` are `unsafe fn` but were called without an `unsafe` block
+- Widget window missing in Tauri capability (fixed via `capabilities/default.json`)
+- Removed dead bridge exports (`widgetListLocked`, `githubConnectToken`, `listBackups`, `restoreBackup`)
+- `sync_vault_to_service` now called after every vault write
+
+### Added
+- `force_unlock` command (`SeTakeOwnershipPrivilege` + `SeRestorePrivilege`) for stubborn files
+- `--info` CSS variable in both themes
+
 ## [0.0.32] - 2026-07-30
 
 ### Fixed
