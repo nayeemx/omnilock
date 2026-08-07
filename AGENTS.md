@@ -70,7 +70,10 @@ User requirement #5: "my computer has fingerprint sensor… I don't want it to w
   - **Tag push (`v*.*.*`)** → `tauri-apps/tauri-action` creates a **signed GitHub Release** (signing key from repo secrets) with the installer + `.sig` attached.
   - Non-tagged push / workflow_dispatch → build only + artifact upload.
 - Repo secrets **are configured** on GitHub: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (set 2026-07-28).
-- **⚠️ CI bug fixed this session**: every previous run failed at the "Build service daemon" step because `copy` (PowerShell) refuses to overwrite the **committed** `src-tauri/resources/omnilock-*.exe` binaries ("item already exists"). Fixed with `shell: bash` + `cp -f`. Never reintroduce `copy` without `-Force` for that step.
+- **⚠️ CI bugs fixed this session** (every previous run failed before reaching the release):
+  1. "Build service daemon" failed: PowerShell `copy` refuses to overwrite the **committed** `src-tauri/resources/omnilock-*.exe` binaries ("item already exists"). Fixed with `shell: bash` + `cp -f`.
+  2. tauri-action failed with "Resource not accessible by integration" — the default `GITHUB_TOKEN` is read-only. Fixed with `permissions: contents: write` at the workflow top.
+  Never reintroduce either.
 
 ### 6. Fixes this session applied on top of the interrupted work (IMPORTANT — the previous session left these broken)
 
@@ -128,6 +131,7 @@ Plus the documentation updated in this session: `AGENTS.md`, `CHANGELOG.md`, `RE
 | **"File encryption key not available" after biometric/widget login** | `cmd_biometric_login` and `cmd_widget_unlock` never set `state.file_key` (only `cmd_unlock_session` did) | Set `state.file_key` + `set_active_file_key` in both commands |
 | **Service re-locks fixed files at boot** | Service persists `locked_items` and re-applies `acl::apply_lock` at startup; ACL recovery fixed the ACL but never purged the list | Recovery commands (`cmd_force_unlock`, `cmd_recover_acl`, `cmd_bulk_recover_acl`) now call `notify_force_remove_locked_item` |
 | **CI fails every push at ~1m40s** | "Build service daemon" step: PowerShell `copy` refuses to overwrite the committed `src-tauri/resources/omnilock-*.exe` → "An item … already exists" | `shell: bash` + `cp -f` in `build.yml` |
+| **CI release step: "Resource not accessible by integration"** | Default `GITHUB_TOKEN` is read-only; creating a release needs `contents: write` | `permissions: contents: write` at the top of `build.yml` |
 | Widget steals focus while user works | Monitor calls `widget.show()+set_focus()` every 2 s poll | `PROMPTED_FOLDERS` static — prompt once per folder (v0.0.34) |
 | Biometric token loadable without fingerprint | Token was DPAPI-only; Hello prompt was client-side | `authenticate_biometric` runs inside `cmd_biometric_login` before loading token (v0.0.34) |
 | Weather inaccurate | wttr.in bad for Bangladesh | Open-Meteo API |

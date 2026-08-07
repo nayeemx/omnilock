@@ -46,8 +46,9 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 **Symptoms:** Every `Build OmniLock` workflow run failed ~1m40s in — but only after the release itself had been created manually, which is why "nothing ever reached GitHub" via the pipeline. Users saw releases without the pipeline working.
 **Root Cause:** The "Build service daemon" step ran on the PowerShell default shell: `copy service\target\release\omnilock-svc.exe src-tauri\resources\`. The `src-tauri/resources/omnilock-*.exe` binaries are **committed to git**, so the destination already exists and PowerShell 5.1 `Copy-Item` errors with "An item with the specified name … already exists" instead of overwriting.
 **Solution:** `shell: bash` + `cp -f` for the copy commands. Tag pushes now reach `tauri-action` and create the signed release.
+**Follow-up:** The first successful build then failed at the release step with "Resource not accessible by integration" — the default `GITHUB_TOKEN` is read-only. Added `permissions: contents: write` to the workflow top so tauri-action can create the release + upload assets.
 **Files Changed:** `.github/workflows/build.yml`
-**Prevention:** Never use PowerShell `copy`/`Copy-Item` without `-Force` when the destination may exist in the checkout. Verify CI from the very first commit, not after the fact.
+**Prevention:** Never use PowerShell `copy`/`Copy-Item` without `-Force` when the destination may exist in the checkout. Any action that creates a GitHub Release needs an explicit `permissions: contents: write` block. Verify CI from the very first commit, not after the fact.
 
 ---
 
