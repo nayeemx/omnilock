@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-08-03T18:00:00Z",
-  "version": "v0.0.34",
-  "notes": "Fixed widget stealing focus every 2s while a locked folder is open in Explorer (now prompts once per folder). Windows Hello verification is now enforced server-side inside cmd_biometric_login, so the DPAPI token can no longer be loaded without a passing Hello check.",
+  "pub_date": "2026-08-07T11:13:25Z",
+  "version": "v0.0.35",
+  "notes": "AES-256-GCM encryption-based file/folder locking replaces the destructive ACL lock; direct WBF fingerprint login (no Windows Hello); ACL Recovery scanner + bulk fixer for files damaged by the old lock; widget temp-unlock + auto re-lock on close; .omnilock double-click unlock; CI now builds & releases signed installers on tag push.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.34/OmniLock_0.0.34_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1lsOS9lbE5ETjA1Um1hSS9MZDRta1AwRHlIS3JGbnQ2ZCt5Yk96d25xUUJ1Q0I0eHN4TXNBOURYSXZOQldKd1BnV3Jpa2NWZVl6dTZLeUlrRHVUTUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzYyMTY0CWZpbGU6T21uaUxvY2tfMC4wLjM0X3g2NC1zZXR1cC5leGUKRzRJaVB0b0tSdXZmcW1DSWhMTDlrR2E0L2VNWiswUXF0dUNPRU5JUGFGNTB4SmhOYjFyOFNTK1hRVUpPMUJtQ00za2xlTTBpNUV0UnZJeFpoNlZpREE9PQo=",
-      "sha256": "6021CF202B623E72A7E9C014FF1DB71457C70FB12B1A1AF68A0E217F5BCE2634"
+      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.35/OmniLock_0.0.35_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2N2NkRrUWk5VU5QTEhDU0ZrM1lla2RtS21YU2RhMXJ0VFA3SHZyYThjUWJtT3k1WS9lWXQwbFRjZ0l4aXhrcThmL0ZVa3AvUko5bTlwUk95RVFkUmcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MTAxMjA0CWZpbGU6T21uaUxvY2tfMC4wLjM1X3g2NC1zZXR1cC5leGUKR1YxQVFDdS9ZMEdMMDdsQ2RnU0I0NUExM1ZwcEErWTljOHhTc2kyZjJOV29LeDBTcHY3ZGVLWk5LQ1NlNzFDWTh5NTVWK0hpeG9qYUNJRUtRcmc4QUE9PQo=",
+      "sha256": "2598219e8238b1efbe10fc5afa3c8c399cd92207cb0066f67829502f67f68cdc"
     }
   }
 }
