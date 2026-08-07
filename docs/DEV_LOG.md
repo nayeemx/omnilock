@@ -24,8 +24,9 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 | Process monitor loop | `process_guard.rs` | ✅ Complete | 500ms poll loop |
 | System presets (6) | `system_presets.rs` | ✅ Complete | All 6 registry/process blocks |
 | Installer guard | `installer_guard.rs` | ✅ Complete | Polls process names, kills installers |
-| File locker | `file_locker.rs` | ✅ Complete | icacls deny/grant Everyone |
-| Drive locker | `drive_locker.rs` | ✅ Complete | ACL + NoDrives registry |
+| File locker (encryption) | `file_locker.rs` | ✅ v0.0.35 rewrite | AES-256-GCM in place; ACL recovery kept |
+| Drive locker | `drive_locker.rs` | ⚠️ Design concern | NoDrives + drive-root encryption (see AGENTS.md) |
+| Biometric (direct WBF) | `biometric.rs` | ✅ v0.0.35 rewrite | WinBio* direct, no Windows Hello |
 | Panic hotkey | `panic_hotkey.rs` | ✅ Complete | RegisterHotKey Win+Alt+L via FFI |
 | Hotkey listener | `panic_hotkey.rs` | ✅ Complete | Windows message loop thread |
 | Watchdog | `watchdog.rs` | ✅ Complete | Self-monitoring, no guard binary |
@@ -39,6 +40,75 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 ---
 
 ## Issue Log
+
+### GitHub Actions Failed On Every Push (copy refuses to overwrite committed binaries)
+**Date:** 2026-08-07
+**Symptoms:** Every `Build OmniLock` workflow run failed ~1m40s in — but only after the release itself had been created manually, which is why "nothing ever reached GitHub" via the pipeline. Users saw releases without the pipeline working.
+**Root Cause:** The "Build service daemon" step ran on the PowerShell default shell: `copy service\target\release\omnilock-svc.exe src-tauri\resources\`. The `src-tauri/resources/omnilock-*.exe` binaries are **committed to git**, so the destination already exists and PowerShell 5.1 `Copy-Item` errors with "An item with the specified name … already exists" instead of overwriting.
+**Solution:** `shell: bash` + `cp -f` for the copy commands. Tag pushes now reach `tauri-action` and create the signed release.
+**Files Changed:** `.github/workflows/build.yml`
+**Prevention:** Never use PowerShell `copy`/`Copy-Item` without `-Force` when the destination may exist in the checkout. Verify CI from the very first commit, not after the fact.
+
+---
+
+### Safety Hardening Pass (code review driven)
+**Date:** 2026-08-07
+**Symptoms/Findings:** A review of the v0.0.35 encryption rewrite surfaced several data-safety hazards: (1) locking a drive root would recursively encrypt the ENTIRE drive (installed apps, hours of operation); (2) locking the vault directory (`%APPDATA%\InnologyBD`) would encrypt the key that unlocks everything; (3) `unlock_file` would silently overwrite a recreated original file; (4) recursive walks followed junctions/symlinks, potentially encrypting files outside the locked tree; (5) `Key::from_slice` panics on wrong-length keys (command crash); (6) sync scan commands could freeze the UI on large trees; (7) widget unlock of a pre-0.0.35 vault hard-errored instead of migrating the key; (8) the `.omnilock` double-click flow needed a manual context-menu install.
+**Solution:** `check_protected_path` guard (drive roots, vault dir, running exe) in `lock_file`/`lock_folder`; drive locking reduced to NoDrives-hide (no whole-drive encryption); no-clobber guard in `unlock_file`; symlink/junction skip in recursive walks; 32-byte key validation in `do_encrypt`/`do_decrypt`; key migration added to `cmd_widget_unlock`; `cmd_scan_acl_damage`/`cmd_bulk_recover_acl` made async via `spawn_blocking`; `.omnilock` association auto-registered on startup (`register_extension_only`); frontend fix so failed ACL repairs stay visible.
+**Files Changed:** `src-tauri/src/file_locker.rs`, `src-tauri/src/drive_locker.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/shell_context.rs`, `src/components/pages/DiagnosticsPage.tsx`
+**Prevention:** Any lock feature that can be pointed at a user-selected path needs a critical-path guard. Encryption with in-place overwrite needs explicit no-clobber + symlink handling. Always review new encryption code for panic paths (slice casts) and blocking calls.
+
+---
+
+### ACL Locking Permanently Destroyed Access — Replaced With AES-256-GCM Encryption
+**Date:** 2026-08-07
+**Symptoms:** The old lock (`apply_safe_lock`) set NTFS owner=SYSTEM + restricted DACL (Admins+SYSTEM only). Locked files/folders became permanently inaccessible to the user, and unlocking was unreliable — this was the user's #6 complaint and the reason "nothing works in real life".
+**Root Cause:** A user-mode ACL lock that removes the owner from the DACL is destructive and hard to reverse. Windows ignores WRITE_DAC when the owner is SYSTEM and the DACL doesn't include the user.
+**Solution:** Rewrote `file_locker.rs` around **AES-256-GCM encryption**: locking encrypts the file in place to `original.omnilock` (magic `OLCK`, nonce, original path, ciphertext+tag) and deletes the original. Unlock decrypts in place. The key is `VaultConfig.file_encryption_key` (32 random bytes, generated at vault setup, independent of the master password, auto-migrated on login).
+**Files Changed:** `src-tauri/src/file_locker.rs`, `models.rs`, `auth.rs`, `lib.rs`, `process_guard.rs`, `drive_locker.rs`, `Cargo.toml` (aes-gcm, getrandom already present)
+**Prevention:** Never strip the owner's own DACL entry as a lock mechanism. Encryption is reversible with the right key; ACL surgery is not.
+
+---
+
+### windows-sys 0.61 Doesn't Export WINBIO_* Named Constants
+**Date:** 2026-08-07
+**Symptoms:** `cargo check` errors: `cannot find value WINBIO_TYPE_FINGERPRINT / WINBIO_POOL_SYSTEM / WINBIO_FLAG_DEFAULT / WINBIO_ID_TYPE_SID`; also earlier unresolved-import errors mixing `windows` and `windows-sys` crate types.
+**Root Cause:** windows-sys 0.61 does not re-export these WBF constants as named items, and mixing the `windows` crate's `Result`-returning API with `windows-sys` raw HRESULT functions caused type mismatches.
+**Solution:** Use **windows-sys exclusively** in `biometric.rs` (glob imports, same style as `file_locker.rs`) and define the missing constants as raw `u32` from SDK header values: `WINBIO_TYPE_FINGERPRINT=0x8`, `WINBIO_POOL_SYSTEM=0x1`, `WINBIO_FLAG_DEFAULT=0x0`, `WINBIO_ID_TYPE_SID=3`. Check HRESULTs as `hr < 0`.
+**Files Changed:** `src-tauri/src/biometric.rs`, `src-tauri/Cargo.toml` (feature `Win32_Devices_BiometricFramework` on windows-sys)
+**Prevention:** For Win32 APIs in this project use windows-sys; when a constant is missing, define it from the SDK header rather than switching crates.
+
+---
+
+### Encryption Rewrite Left Stale Call Sites (Compile Errors)
+**Date:** 2026-08-07
+**Symptoms:** After `lock_file/unlock_file/lock_folder/unlock_folder` gained a `key_material` parameter, `drive_locker.rs` (2 sites) and `lib.rs` `cmd_rescue_unlock` still called them with 1 arg → `error[E0061]`; `cmd_rescue_unlock`'s `Ok(())` arm also mismatched the new `Result<String, String>`.
+**Root Cause:** The big rewrite never re-ran the compiler before the session hit usage limits.
+**Solution:** Thread `key_material` through `lock_drive`/`unlock_drive` (4 call sites in `lib.rs`), give `cmd_rescue_unlock` a `State` + `require_file_key`, and return the decrypted path. Verified every call site via search (18 matches) and re-ran `cargo check` until clean.
+**Files Changed:** `src-tauri/src/drive_locker.rs`, `src-tauri/src/lib.rs`
+**Prevention:** Always run `cargo check` after a multi-file signature change; search for every call site before assuming the build is green.
+
+---
+
+### File Encryption Key Missing After Fingerprint Login / Widget Unlock
+**Date:** 2026-08-07
+**Symptoms:** After logging in with the fingerprint or unlocking via the widget, the next lock/unlock would fail with "File encryption key not available. Please log in first."
+**Root Cause:** Only `cmd_unlock_session` populated `state.file_key`; `cmd_biometric_login` and `cmd_widget_unlock` set session/config/password but never the file key (nor the global `ACTIVE_FILE_KEY` in the widget path).
+**Solution:** Both commands now migrate + set `state.file_key` and call `set_active_file_key`.
+**Files Changed:** `src-tauri/src/lib.rs`
+**Prevention:** Any code path that establishes a session must also establish the file key; grep for `session_token` writes and check each has a matching `file_key` write.
+
+---
+
+### Service Re-Inflicted Old ACL Damage On Encryption Locks
+**Date:** 2026-08-07
+**Symptoms:** After the encryption rewrite, the app still called `service_client::notify_lock_file/folder/drive`. The service (`service/src/bin/svc.rs`) responds by applying `acl::apply_lock` (owner=SYSTEM + restricted DACL) and persisting the item for **re-application at every boot** — re-creating the exact destructive behavior the user reported, on top of encryption.
+**Root Cause:** The rewrite updated the app's lock mechanics but kept the legacy service notifications.
+**Solution:** Removed `notify_lock_file`/`notify_lock_folder`/`notify_lock_drive` from all encryption lock paths (files, folders, drives, apps). Recovery commands (`cmd_force_unlock`, `cmd_recover_acl`, `cmd_bulk_recover_acl`) now call `notify_force_remove_locked_item` so the service stops re-locking fixed paths at boot.
+**Files Changed:** `src-tauri/src/lib.rs`
+**Prevention:** When the lock mechanism changes, audit every `service_client::notify_*` call — the service's ACL daemon is legacy for lock enforcement.
+
+---
 
 ### 2FA TOTP Secret Encoding (Base64 vs Base32)
 **Date:** 2026-07-26

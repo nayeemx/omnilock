@@ -23,8 +23,11 @@ pub fn lock_drive(drive_letter: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     if root != "C:\\" {
-        let _ = crate::file_locker::lock_folder(&root);
-        logger::log("DRIVE", &format!("Drive ACL set: {}", root));
+        // v0.0.35: NoDrives hides the drive from Explorer. Whole-drive recursive
+        // encryption was REMOVED — it would encrypt installed apps and is blocked
+        // by the drive-root guard in file_locker. True drive access blocking needs
+        // a design decision (see AGENTS.md -> priority issues).
+        logger::log("DRIVE", &format!("Drive hidden via NoDrives: {}", root));
     }
 
     Ok(())
@@ -58,8 +61,7 @@ pub fn unlock_drive(drive_letter: &str, remaining_locked: &[String]) -> Result<(
     }
 
     if root != "C:\\" {
-        let _ = crate::file_locker::unlock_folder(&root);
-        logger::log("DRIVE", &format!("Drive ACL removed: {}", root));
+        logger::log("DRIVE", &format!("Drive visibility restored: {}", root));
     }
 
     Ok(())

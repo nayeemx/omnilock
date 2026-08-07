@@ -139,27 +139,26 @@ npx tauri build
 
 ---
 
-## 5. GitHub Releases Setup
+## 5. GitHub Releases Setup (v0.0.35+ — CI automates this)
 
-### Create Release
+The workflow `.github/workflows/build.yml` now builds the service + monitor, then:
+- **Tag push (`v*.*.*`)** → `tauri-apps/tauri-action` creates a **signed GitHub Release** with the installer + `.sig` attached (needs repo secrets `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
+- **Non-tagged push / workflow_dispatch** → build only, installer uploaded as a CI artifact.
+
+### Release flow (recommended)
+1. Bump version to `0.0.35` in `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `package.json`.
+2. Commit everything (including updated `.md` files).
+3. `git tag v0.0.35 && git push origin main --tags`
+4. CI builds, signs, and publishes the release automatically.
+5. Verify the release page has `OmniLock_0.0.35_x64-setup.exe` + `.sig`, and that `latest.json`/updater endpoint resolves.
+
+### Manual fallback (if CI is not used)
 ```powershell
-# Using GitHub CLI
-gh release create v1.0.0 --repo nayeemx/omnilock \
-  --title "OmniLock v1.0.0" \
-  --notes "Release notes here" \
-  --prerelease \
-  src-tauri/target/release/omnilock.exe \
-  src-tauri/target/release/bundle/msi/OmniLock_1.0.0_x64_en-US.msi \
-  src-tauri/target/release/bundle/nsis/OmniLock_1.0.0_x64-setup.exe \
-  src-tauri/target/release/bundle/msi/OmniLock_1.0.0_x64_en-US.msi.sig \
-  src-tauri/target/release/bundle/nsis/OmniLock_1.0.0_x64-setup.exe.sig
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content src-tauri\update.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
+npx tauri build
+# then create the release with gh CLI, attaching the installer + .sig
 ```
-
-### Update Flow
-1. Bump version in `tauri.conf.json`
-2. Run signed build with env vars set
-3. Create GitHub Release with assets
-4. Users click "Check for Updates" in Security page
 
 ---
 

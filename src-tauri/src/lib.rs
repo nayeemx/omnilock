@@ -32,6 +32,28 @@ use models::*;
 
 pub static UNLOCK_TARGET: OnceLock<Mutex<Option<UnlockTarget>>> = OnceLock::new();
 
+/// The item that was temporarily unlocked via the widget popup.
+/// When the widget loses focus we re-apply the lock on this target.
+pub static WIDGET_TEMP_UNLOCKED: OnceLock<Mutex<Option<UnlockTarget>>> = OnceLock::new();
+
+/// Active file encryption key — set at login, cleared on lock.
+/// Used by background threads (process_guard, auto_lock) that can't access AppState.
+static ACTIVE_FILE_KEY: OnceLock<Mutex<Option<Vec<u8>>>> = OnceLock::new();
+
+pub fn set_active_file_key(key: Vec<u8>) {
+    if let Ok(mut g) = ACTIVE_FILE_KEY.get_or_init(|| Mutex::new(None)).lock() {
+        *g = Some(key);
+    }
+}
+
+pub fn get_active_file_key() -> Option<Vec<u8>> {
+    ACTIVE_FILE_KEY.get_or_init(|| Mutex::new(None))
+        .lock().ok().and_then(|g| g.clone())
+}
+
+/// Path of a .omnilock file passed on the command line, waiting for the user to log in.
+pub static PENDING_OPEN_LOCKED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
 /// Create a process Command with CREATE_NO_WINDOW to prevent visible console flashes.
 #[cfg(target_os = "windows")]
 pub fn hidden_cmd(program: &str) -> std::process::Command {
@@ -46,6 +68,7 @@ struct AppState {
     session_token: Mutex<Option<SessionToken>>,
     vault_config: Mutex<Option<VaultConfig>>,
     password: Mutex<Option<String>>,
+    file_key: Mutex<Option<Vec<u8>>>,
 }
 
 fn require_valid_session(state: &AppState) -> Result<(), String> {
@@ -58,6 +81,13 @@ fn require_valid_session(state: &AppState) -> Result<(), String> {
         return Err("Session expired. Please log in again.".to_string());
     }
     Ok(())
+}
+
+/// Get the file encryption key from AppState, returning an error if not set.
+fn require_file_key(state: &AppState) -> Result<Vec<u8>, String> {
+    state.file_key.lock().map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "File encryption key not available. Please log in first.".to_string())
 }
 
 fn save_locked_items_summary(config: &VaultConfig) {
@@ -140,8 +170,18 @@ fn cmd_unlock_session(
     app: tauri::AppHandle,
 ) -> Result<SessionToken, String> {
     let token = auth::unlock_session(auth_payload.clone())?;
-    let config = vault::decrypt_vault(&auth_payload.master_password)?;
+    let mut config = vault::decrypt_vault(&auth_payload.master_password)?;
     let auto_lock_min = config.auto_lock_minutes;
+
+    // Migrate: generate file_encryption_key for vaults that pre-date encryption support
+    if config.file_encryption_key.len() != 32 {
+        let mut key = vec![0u8; 32];
+        getrandom::getrandom(&mut key).map_err(|e| format!("Key gen: {e}"))?;
+        config.file_encryption_key = key;
+        vault::encrypt_vault(&config, &auth_payload.master_password)?;
+    }
+
+    let file_key = config.file_encryption_key.clone();
 
     let mut session_guard = state.session_token.lock().map_err(|e| e.to_string())?;
     *session_guard = Some(token.clone());
@@ -151,6 +191,12 @@ fn cmd_unlock_session(
 
     let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
     *password_guard = Some(auth_payload.master_password);
+
+    let mut file_key_guard = state.file_key.lock().map_err(|e| e.to_string())?;
+    *file_key_guard = Some(file_key.clone());
+    drop(file_key_guard);
+
+    set_active_file_key(file_key);
 
     auto_lock::set_auto_lock_minutes(auto_lock_min);
     auto_lock::set_on_idle_lock_callback(Box::new(|| {
@@ -162,7 +208,7 @@ fn cmd_unlock_session(
     process_guard::update_locked_apps(current_config.locked_apps.clone());
     process_guard::update_locked_folders(current_config.locked_folders.clone());
     process_guard::start_process_monitor(app.clone());
-    process_guard::start_file_access_monitor(app);
+    process_guard::start_file_access_monitor(app.clone());
 
     drive_locker::set_monitored_locked_drives(current_config.locked_drives.clone());
     drive_locker::set_usb_removal_callback(std::sync::Arc::new(|| {
@@ -171,6 +217,29 @@ fn cmd_unlock_session(
             .spawn();
     }));
     drive_locker::start_usb_removal_monitor();
+
+    // If a .omnilock file was passed on the command line, show its widget now
+    let pending = PENDING_OPEN_LOCKED.get_or_init(|| Mutex::new(None))
+        .lock().ok().and_then(|mut g| g.take());
+    if let Some(enc_path) = pending {
+        let display = std::path::Path::new(&enc_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().trim_end_matches(".omnilock").to_string())
+            .unwrap_or_else(|| enc_path.clone());
+        let target = UnlockTarget {
+            target_type: "file".to_string(),
+            target_id: enc_path.clone(),
+            display_name: display,
+        };
+        if let Ok(mut g) = UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock() {
+            *g = Some(target.clone());
+        }
+        if let Some(widget) = app.get_webview_window("widget") {
+            let _ = widget.show();
+            let _ = widget.set_focus();
+            let _ = widget.emit("unlock-target", &target);
+        }
+    }
 
     Ok(token)
 }
@@ -241,7 +310,8 @@ fn cmd_add_locked_drive(
             return Err(e);
         }
     }
-    service_client::notify_lock_drive(&drive_letter);
+    // No service ACL notification — the service's drive-root ACL lock is the old
+    // destructive approach. Drive locking is now NoDrives visibility + encryption.
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_drives.contains(&drive_letter) {
@@ -292,20 +362,20 @@ fn cmd_add_locked_file(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     logger::log("LOCK", &format!("lock_file start: {}", path));
-    match file_locker::lock_file(&path) {
-        Ok(()) => logger::log("LOCK", &format!("lock_file ok: {}", path)),
-        Err(e) => {
-            logger::log("LOCK", &format!("lock_file failed: {} err={}", path, e));
-            return Err(e);
-        }
-    }
-    let verified = file_locker::verify_lock(&path).unwrap_or(false);
-    logger::log("LOCK", &format!("lock_file verify={} path={}", verified, path));
+    let _enc_path = match file_locker::lock_file(&path, &key) {
+        Ok(p) => { logger::log("LOCK", &format!("lock_file ok: {} -> {}", path, p)); p }
+        Err(e) => { logger::log("LOCK", &format!("lock_file failed: {} err={}", path, e)); return Err(e); }
+    };
+    let locked = file_locker::is_file_locked(&path);
     cloud_status::set_lock_state(&path, true);
-    service_client::notify_lock_file(&path);
+    // NOTE: no service ACL notification here. The old service applies destructive
+    // ACL locks (owner=SYSTEM + restricted DACL) and persists them for re-application
+    // at boot. Encryption-based locks are managed entirely by the app now.
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+    // Store the original path in vault so we can find the encrypted version
     if !config.locked_files.contains(&path) {
         config.locked_files.push(path.clone());
     }
@@ -313,7 +383,7 @@ fn cmd_add_locked_file(
     let password = password_guard.as_ref().ok_or("No password in session")?;
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
-    if verified { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
+    if locked { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
 
 #[tauri::command]
@@ -322,16 +392,13 @@ fn cmd_remove_locked_file(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     logger::log("UNLOCK", &format!("unlock_file start: {}", path));
-    match file_locker::unlock_file(&path) {
-        Ok(()) => logger::log("UNLOCK", &format!("unlock_file ok: {}", path)),
-        Err(e) => {
-            logger::log("UNLOCK", &format!("unlock_file failed: {} err={}", path, e));
-            return Err(e);
-        }
+    match file_locker::unlock_file(&path, &key) {
+        Ok(p) => logger::log("UNLOCK", &format!("unlock_file ok: {}", p)),
+        Err(e) => { logger::log("UNLOCK", &format!("unlock_file failed: {} err={}", path, e)); return Err(e); }
     }
-    let verified = file_locker::verify_lock(&path).unwrap_or(true);
-    logger::log("UNLOCK", &format!("unlock_file verify={} path={}", verified, path));
+    let still_locked = file_locker::is_file_locked(&path);
     cloud_status::set_lock_state(&path, false);
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
@@ -341,7 +408,7 @@ fn cmd_remove_locked_file(
     config.locked_files.retain(|f| f != &path);
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
-    if !verified { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
+    if !still_locked { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
 
 #[tauri::command]
@@ -350,18 +417,16 @@ fn cmd_add_locked_folder(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     logger::log("LOCK", &format!("lock_folder start: {}", path));
-    match file_locker::lock_folder(&path) {
-        Ok(()) => logger::log("LOCK", &format!("lock_folder ok: {}", path)),
-        Err(e) => {
-            logger::log("LOCK", &format!("lock_folder failed: {} err={}", path, e));
-            return Err(e);
-        }
+    match file_locker::lock_folder(&path, &key) {
+        Ok(n) => logger::log("LOCK", &format!("lock_folder ok: {} files encrypted in {}", n, path)),
+        Err(e) => { logger::log("LOCK", &format!("lock_folder failed: {} err={}", path, e)); return Err(e); }
     }
-    let verified = file_locker::verify_lock(&path).unwrap_or(false);
-    logger::log("LOCK", &format!("lock_folder verify={} path={}", verified, path));
+    let locked = file_locker::is_folder_locked(&path);
     cloud_status::set_lock_state(&path, true);
-    service_client::notify_lock_folder(&path);
+    // No service ACL notification — see cmd_add_locked_file. The service would
+    // restrict the folder's own DACL, re-introducing the old lock damage.
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_folders.contains(&path) {
@@ -372,7 +437,7 @@ fn cmd_add_locked_folder(
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(config);
-    if verified { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
+    if locked { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
 
 #[tauri::command]
@@ -381,16 +446,13 @@ fn cmd_remove_locked_folder(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     logger::log("UNLOCK", &format!("unlock_folder start: {}", path));
-    match file_locker::unlock_folder(&path) {
-        Ok(()) => logger::log("UNLOCK", &format!("unlock_folder ok: {}", path)),
-        Err(e) => {
-            logger::log("UNLOCK", &format!("unlock_folder failed: {} err={}", path, e));
-            return Err(e);
-        }
+    match file_locker::unlock_folder(&path, &key) {
+        Ok(n) => logger::log("UNLOCK", &format!("unlock_folder ok: {} files decrypted in {}", n, path)),
+        Err(e) => { logger::log("UNLOCK", &format!("unlock_folder failed: {} err={}", path, e)); return Err(e); }
     }
-    let verified = file_locker::verify_lock(&path).unwrap_or(true);
-    logger::log("UNLOCK", &format!("unlock_folder verify={} path={}", verified, path));
+    let still_locked = file_locker::is_folder_locked(&path);
     cloud_status::set_lock_state(&path, false);
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
@@ -402,11 +464,49 @@ fn cmd_remove_locked_folder(
     process_guard::update_locked_folders(config.locked_folders.clone());
     process_guard::notify_folder_locked(&path);
     save_locked_items_summary(config);
-    if !verified { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
+    if !still_locked { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
 
 #[tauri::command]
-fn cmd_rescue_unlock(path: String) -> Result<String, String> {
+async fn cmd_scan_acl_damage(path: String) -> Result<Vec<String>, String> {
+    logger::log("SCAN_ACL", &format!("scan_acl_damage: {}", path));
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+    // Recursive walk can take a while on large trees — run off the UI thread.
+    let scan_path = path.clone();
+    let damaged = tokio::task::spawn_blocking(move || file_locker::scan_acl_damage(&scan_path))
+        .await
+        .map_err(|e| format!("Scan task error: {e}"))?;
+    logger::log("SCAN_ACL", &format!("scan_acl_damage found {} damaged items under {}", damaged.len(), path));
+    Ok(damaged)
+}
+
+#[tauri::command]
+async fn cmd_bulk_recover_acl(paths: Vec<String>) -> Vec<(String, String)> {
+    logger::log("BULK_RECOVER", &format!("bulk_recover_acl: {} items", paths.len()));
+    // force_unlock takes ownership + resets DACL — can be slow per item; run off the UI thread.
+    let fix_paths = paths.clone();
+    let results = tokio::task::spawn_blocking(move || file_locker::bulk_recover_acl(&fix_paths))
+        .await
+        .unwrap_or_default();
+    for (p, status) in &results {
+        logger::log("BULK_RECOVER", &format!("{} -> {}", p, status));
+        if status == "ok" {
+            // Prevent the service from re-applying the old ACL lock at boot.
+            service_client::notify_force_remove_locked_item(p);
+        }
+    }
+    results
+}
+
+#[tauri::command]
+fn cmd_rescue_unlock(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     logger::log("RESCUE", &format!("rescue_unlock start: {}", path));
     if !std::path::Path::new(&path).exists() {
         logger::log("RESCUE", &format!("rescue_unlock path not found: {}", path));
@@ -425,8 +525,8 @@ fn cmd_rescue_unlock(path: String) -> Result<String, String> {
         return Ok("not_locked".to_string());
     }
 
-    match file_locker::unlock_file(&path) {
-        Ok(()) => logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", path)),
+    match file_locker::unlock_file(&path, &key) {
+        Ok(p) => logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", p)),
         Err(e) => {
             logger::log("RESCUE", &format!("rescue_unlock unlock failed: {} err={}", path, e));
             return Err(e);
@@ -449,6 +549,7 @@ fn cmd_recover_acl(path: String) -> Result<String, String> {
     match file_locker::safe_recover_acl(&path) {
         Ok(()) => {
             logger::log("RECOVER", &format!("recover_acl ok: {}", path));
+            service_client::notify_force_remove_locked_item(&path);
             Ok("recovered".to_string())
         }
         Err(e) => {
@@ -464,6 +565,8 @@ fn cmd_force_unlock(path: String) -> Result<String, String> {
     match file_locker::force_unlock(&path) {
         Ok(()) => {
             logger::log("FORCE_UNLOCK", &format!("force_unlock ok: {}", path));
+            // Purge from the service's persisted re-lock list so it isn't re-locked at boot.
+            service_client::notify_force_remove_locked_item(&path);
             Ok("force_unlocked".to_string())
         }
         Err(e) => {
@@ -494,18 +597,20 @@ fn cmd_toggle_locked_app(
     enabled: bool,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if let Some(app) = config.locked_apps.iter_mut().find(|a| a.name == name) {
         app.enabled = enabled;
+        let app_path = app.path.clone();
         if enabled {
-            let _ = file_locker::lock_file(&app.path);
-            service_client::notify_lock_file(&app.path);
+            let _ = file_locker::lock_file(&app_path, &key);
+            // No service ACL notification — see cmd_add_locked_file.
         } else {
-            let _ = file_locker::unlock_file(&app.path);
+            let _ = file_locker::unlock_file(&app_path, &key);
             let password_guard = state.password.lock().map_err(|e| e.to_string())?;
             let password = password_guard.as_ref().ok_or("No password in session")?;
-            service_client::notify_unlock_item(&app.path, password);
+            service_client::notify_unlock_item(&app_path, password);
         }
     } else {
         return Err(format!("App not found: {}", name));
@@ -527,18 +632,14 @@ fn cmd_add_locked_app(
     _sha256: String,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
-    let _ = file_locker::lock_file(&path);
-    service_client::notify_lock_file(&path);
+    let key = require_file_key(&state)?;
+    let _ = file_locker::lock_file(&path, &key);
+    // No service ACL notification — see cmd_add_locked_file.
     let sha256 = process_guard::compute_file_sha256(&path).unwrap_or_default();
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_apps.iter().any(|a| a.name == name) {
-        config.locked_apps.push(LockedApp {
-            name,
-            path,
-            sha256,
-            enabled: true,
-        });
+        config.locked_apps.push(LockedApp { name, path, sha256, enabled: true });
     }
     let apps = config.locked_apps.clone();
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
@@ -555,10 +656,11 @@ fn cmd_remove_locked_app(
     name: String,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if let Some(app) = config.locked_apps.iter().find(|a| a.name == name) {
-        let _ = file_locker::unlock_file(&app.path);
+        let _ = file_locker::unlock_file(&app.path, &key);
         let password_guard = state.password.lock().map_err(|e| e.to_string())?;
         let password = password_guard.as_ref().ok_or("No password in session")?;
         service_client::notify_unlock_item(&app.path, password);
@@ -799,60 +901,60 @@ fn cmd_widget_unlock(
     };
 
     let mut config = vault::decrypt_vault(&password)?;
+    // Migrate: generate file_encryption_key for vaults that pre-date encryption support
+    if config.file_encryption_key.len() != 32 {
+        let mut k = vec![0u8; 32];
+        getrandom::getrandom(&mut k).map_err(|e| format!("Key gen: {e}"))?;
+        config.file_encryption_key = k;
+        vault::encrypt_vault(&config, &password)?;
+    }
+    let file_key = config.file_encryption_key.clone();
 
+    // Temporarily lift the restriction — vault config unchanged, item stays locked there.
     match target.target_type.as_str() {
         "file" => {
-            file_locker::unlock_file(&target.target_id)?;
-            let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
-            if verified { return Err("Unlock failed - ACL still present".to_string()); }
+            file_locker::unlock_file(&target.target_id, &file_key)?;
             service_client::notify_unlock_item(&target.target_id, &password);
         }
         "folder" => {
-            file_locker::unlock_folder(&target.target_id)?;
-            let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
-            if verified { return Err("Unlock failed - ACL still present".to_string()); }
+            file_locker::unlock_folder(&target.target_id, &file_key)?;
             service_client::notify_unlock_item(&target.target_id, &password);
             process_guard::notify_folder_unlocked(&target.target_id);
         }
         "app" => {
-            file_locker::unlock_file(&target.target_id)?;
-            let verified = file_locker::verify_lock(&target.target_id).unwrap_or(true);
-            if verified { return Err("Unlock failed - ACL still present".to_string()); }
+            file_locker::unlock_file(&target.target_id, &file_key)?;
             service_client::notify_unlock_item(&target.target_id, &password);
-            config.locked_apps.retain(|a| a.path != target.target_id);
         }
         "drive" => {
             let remaining: Vec<String> = config.locked_drives.iter()
                 .filter(|d| d.as_str() != target.target_id.as_str())
-                .cloned()
-                .collect();
+                .cloned().collect();
             drive_locker::unlock_drive(&target.target_id, &remaining)?;
             service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
-            config.locked_drives.retain(|d| d != &target.target_id);
         }
         _ => return Err(format!("Unknown target type: {}", target.target_type)),
     }
 
-    vault::encrypt_vault(&config, &password)?;
-    let apps = config.locked_apps.clone();
-    process_guard::update_locked_apps(apps);
-    process_guard::update_locked_folders(config.locked_folders.clone());
-    save_locked_items_summary(&config);
-
+    // Store for auto-relock when widget loses focus
     {
-        let mut target_guard = UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
-        *target_guard = None;
+        let mut pending = WIDGET_TEMP_UNLOCKED.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
+        *pending = Some(target.clone());
+    }
+    {
+        let mut g = UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
+        *g = None;
+    }
+
+    // Also store the active file key so the relock handler can use it
+    set_active_file_key(file_key.clone());
+    {
+        let mut fk = state.file_key.lock().map_err(|e| e.to_string())?;
+        *fk = Some(file_key);
     }
 
     let mut session_guard = state.session_token.lock().map_err(|e| e.to_string())?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    *session_guard = Some(SessionToken {
-        token: password.clone(),
-        expires_at: now + 3600,
-    });
+    let now = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs();
+    *session_guard = Some(SessionToken { token: password.clone(), expires_at: now + 3600 });
     drop(session_guard);
 
     let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
@@ -1196,7 +1298,7 @@ async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) 
     logger::log("BIOMETRIC", "biometric_login start");
     let verified = biometric::authenticate_biometric("Verify identity to unlock OmniLock".to_string()).await?;
     if !verified {
-        return Err("Windows Hello verification failed".to_string());
+        return Err("Fingerprint verification failed".to_string());
     }
     let password = match biometric::load_biometric_token() {
         Ok(pw) => {
@@ -1208,8 +1310,17 @@ async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) 
             return Err(e);
         }
     };
-    let config = vault::decrypt_vault(&password).map_err(|e| format!("Wrong password: {}", e))?;
+    let mut config = vault::decrypt_vault(&password).map_err(|e| format!("Wrong password: {}", e))?;
     logger::log("BIOMETRIC", "decrypt_vault ok");
+
+    // Migrate: generate file_encryption_key for vaults that pre-date encryption support
+    if config.file_encryption_key.len() != 32 {
+        let mut k = vec![0u8; 32];
+        getrandom::getrandom(&mut k).map_err(|e| format!("Key gen: {e}"))?;
+        config.file_encryption_key = k;
+        vault::encrypt_vault(&config, &password).map_err(|e| e.to_string())?;
+    }
+    let file_key = config.file_encryption_key.clone();
     let session_token = auth::create_session_token().map_err(|e| e.to_string())?;
     {
         let mut token_guard = state.session_token.lock().map_err(|e| e.to_string())?;
@@ -1223,6 +1334,11 @@ async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) 
         let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
         *password_guard = Some(password);
     }
+    {
+        let mut fk = state.file_key.lock().map_err(|e| e.to_string())?;
+        *fk = Some(file_key.clone());
+    }
+    set_active_file_key(file_key);
     process_guard::update_locked_apps(config.locked_apps.clone());
     process_guard::update_locked_folders(config.locked_folders.clone());
     process_guard::start_process_monitor(app.clone());
@@ -1351,6 +1467,7 @@ pub fn run() {
         session_token: Mutex::new(None),
         vault_config: Mutex::new(None),
         password: Mutex::new(None),
+        file_key: Mutex::new(None),
     };
 
     tauri::Builder::default()
@@ -1374,6 +1491,8 @@ pub fn run() {
             cmd_toggle_locked_app,
             cmd_add_locked_app,
             cmd_remove_locked_app,
+            cmd_scan_acl_damage,
+            cmd_bulk_recover_acl,
             cmd_rescue_unlock,
             cmd_recover_acl,
             cmd_force_unlock,
@@ -1545,6 +1664,24 @@ pub fn run() {
 
             panic_hotkey::start_hotkey_listener();
             watchdog::start_watchdog();
+
+            // Register .omnilock file association so double-clicking a locked file opens the unlock widget
+            if let Err(e) = shell_context::register_extension_only() {
+                logger::log("SETUP", &format!("register_omnilock_extension failed: {e}"));
+            }
+
+            // Handle --open-locked <path> argument: store the path so the unlock
+            // widget can be shown after the user logs in.
+            let args: Vec<String> = std::env::args().collect();
+            if let Some(idx) = args.iter().position(|a| a == "--open-locked") {
+                if let Some(locked_path) = args.get(idx + 1) {
+                    logger::log("SETUP", &format!("--open-locked arg: {}", locked_path));
+                    if let Ok(mut g) = PENDING_OPEN_LOCKED.get_or_init(|| Mutex::new(None)).lock() {
+                        *g = Some(locked_path.clone());
+                    }
+                }
+            }
+
             logger::log("SETUP", "setup hook complete");
             Ok(())
         })
@@ -1558,7 +1695,34 @@ pub fn run() {
                 }
                 "widget" => {
                     if let tauri::WindowEvent::Focused(false) = event {
-                        // Don't hide if there's a pending unlock target
+                        // Re-apply the lock on whatever was temporarily unlocked
+                        let pending = WIDGET_TEMP_UNLOCKED
+                            .get_or_init(|| Mutex::new(None))
+                            .lock().ok()
+                            .and_then(|mut g| g.take());
+
+                        if let Some(target) = pending {
+                            let key = get_active_file_key();
+                            logger::log("WIDGET", &format!("auto-relock: {} {}", target.target_type, target.target_id));
+                            match target.target_type.as_str() {
+                                "file" | "app" => {
+                                    if let Some(k) = &key {
+                                        let _ = file_locker::lock_file(&target.target_id, k);
+                                    }
+                                }
+                                "folder" => {
+                                    if let Some(k) = &key {
+                                        let _ = file_locker::lock_folder(&target.target_id, k);
+                                    }
+                                    process_guard::notify_folder_locked(&target.target_id);
+                                }
+                                "drive" => {
+                                    let _ = drive_locker::lock_drive(&target.target_id);
+                                }
+                                _ => {}
+                            }
+                        }
+
                         let has_target = UNLOCK_TARGET.get_or_init(|| Mutex::new(None))
                             .lock().map(|g| g.is_some()).unwrap_or(false);
                         if !has_target {

@@ -1,11 +1,30 @@
+// Direct Windows Biometric Framework (WBF) integration.
+// Uses windows-sys glob imports identically to file_locker.rs.
+// WinBioOpenSession -> WinBioIdentify -> compare SID -> WinBioCloseSession.
+// No PowerShell. No Windows Hello dialog. OmniLock owns the prompt.
+
 use serde::Serialize;
 use std::path::PathBuf;
+
+use windows_sys::Win32::Devices::BiometricFramework::*;
+use windows_sys::Win32::Foundation::*;
+use windows_sys::Win32::Security::*;
+use windows_sys::Win32::System::Threading::*;
+
+// WBF constants — not always re-exported as named items in windows-sys 0.61,
+// so we define them directly from the SDK header values.
+const WINBIO_TYPE_FINGERPRINT: u32 = 0x00000008;
+const WINBIO_POOL_SYSTEM: u32      = 0x00000001;
+const WINBIO_FLAG_DEFAULT: u32     = 0x00000000;
+const WINBIO_ID_TYPE_SID: u32      = 3; // WINBIO_IDENTITY_TYPE for account SID
 
 #[derive(Serialize, Clone)]
 pub struct BiometricStatus {
     pub available: bool,
     pub reason: String,
 }
+
+// ── token storage helpers ────────────────────────────────────────────────────
 
 fn biometric_token_path() -> PathBuf {
     let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
@@ -15,178 +34,191 @@ fn biometric_token_path() -> PathBuf {
         .join("biometric.token")
 }
 
-pub fn check_biometric_available() -> BiometricStatus {
-    let service_check = crate::hidden_cmd("sc")
-        .args(["query", "WbioSrvc"])
-        .output();
-
-    let service_running = match &service_check {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            stdout.contains("RUNNING")
-        }
-        Err(_) => false,
-    };
-
-    if !service_running {
-        return BiometricStatus {
-            available: false,
-            reason: "Windows Biometric Service is not running".to_string(),
-        };
-    }
-
-    let hello_check = crate::hidden_cmd("reg")
-        .args(["query",
-            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\WindowsHello",
-            "/v", "Enabled", "/t", "REG_DWORD"])
-        .output();
-
-    let hello_enabled = match &hello_check {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            stdout.contains("0x1")
-        }
-        Err(_) => false,
-    };
-
-    if hello_enabled {
-        return BiometricStatus {
-            available: true,
-            reason: "Windows Hello is available".to_string(),
-        };
-    }
-
-    let pin_check = crate::hidden_cmd("reg")
-        .args(["query",
-            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\Bio\\Credential Provider",
-            "/s"])
-        .output();
-
-    let has_bio = match &pin_check {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            !stdout.is_empty() && !stdout.contains("ERROR")
-        }
-        Err(_) => false,
-    };
-
-    if has_bio {
-        return BiometricStatus {
-            available: true,
-            reason: "Biometric provider detected. Set up a PIN in Windows Settings > Accounts > Sign-in options.".to_string(),
-        };
-    }
-
-    BiometricStatus {
-        available: false,
-        reason: "Windows Hello not configured. Set up a PIN or fingerprint in Windows Settings > Accounts > Sign-in options.".to_string(),
-    }
-}
-
 fn powershell51_path() -> String {
     let sys32 = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
     let path = format!("{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", sys32);
-    if std::path::Path::new(&path).exists() {
-        path
-    } else {
-        "powershell".to_string()
+    if std::path::Path::new(&path).exists() { path } else { "powershell".to_string() }
+}
+
+// ── sensor availability check ─────────────────────────────────────────────────
+
+pub fn check_biometric_available() -> BiometricStatus {
+    match wbf_count_fingerprint_units() {
+        Ok(n) if n > 0 => BiometricStatus {
+            available: true,
+            reason: format!("{n} fingerprint sensor(s) detected"),
+        },
+        Ok(_) => BiometricStatus {
+            available: false,
+            reason: "No fingerprint sensor found. Enroll a fingerprint in Windows \
+                     Settings \u{2192} Accounts \u{2192} Sign-in options \u{2192} \
+                     Fingerprint recognition.".to_string(),
+        },
+        Err(e) => BiometricStatus {
+            available: false,
+            reason: format!("Windows Biometric Framework unavailable: {e}"),
+        },
     }
 }
+
+fn wbf_count_fingerprint_units() -> Result<usize, String> {
+    unsafe {
+        let mut schema_ptr: *mut WINBIO_UNIT_SCHEMA = std::ptr::null_mut();
+        let mut count: usize = 0;
+        let hr = WinBioEnumBiometricUnits(
+            WINBIO_TYPE_FINGERPRINT,
+            &mut schema_ptr,
+            &mut count,
+        );
+        if hr < 0 {
+            return Err(format!("WinBioEnumBiometricUnits HRESULT=0x{hr:08X}"));
+        }
+        if !schema_ptr.is_null() {
+            WinBioFree(schema_ptr as *mut _);
+        }
+        Ok(count)
+    }
+}
+
+// ── core authentication via WBF ───────────────────────────────────────────────
+
+const SCAN_TIMEOUT_SECS: u64 = 30;
 
 pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
-    let ps = powershell51_path();
-    let output = tokio::task::spawn_blocking(move || {
-        let script = format!(
-            "$ErrorActionPreference = 'Stop'; \
-             try {{ \
-               Add-Type -AssemblyName System.Runtime.WindowsRuntime; \
-               $null = [Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]; \
-               $null = [Windows.Security.Credentials.UI.UserConsentVerifierResult,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]; \
-               $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ \
-                 $_.Name -eq 'AsTask' -and \
-                 $_.GetParameters().Count -eq 1 -and \
-                 $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' \
-               }})[0]; \
-               $asTask = $asTaskGeneric.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerifierResult]); \
-               $op = [Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('{}'); \
-               $result = $asTask.Invoke($null, @($op)).Result; \
-               $result.ToString() \
-             }} catch {{ \
-               'Error: ' + $_.Exception.Message \
-             }}",
-            message.replace('\'', "''")
-        );
-
-        crate::hidden_cmd(&ps)
-            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
-            .output()
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
-    .map_err(|e| format!("Failed to run PowerShell: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-
-    if stdout.starts_with("Error:") {
-        return Err(stdout);
-    }
-
-    if !output.status.success() && !stderr.is_empty() {
-        return Err(format!("Biometric auth failed: {}", stderr));
-    }
-
-    match stdout.as_str() {
-        "Verified" => Ok(true),
-        "Canceled" => Err("Authentication cancelled".to_string()),
-        "DeviceNotPresent" => Err("No biometric device found".to_string()),
-        "NotConfiguredForUser" => Err("Windows Hello not set up. Set up a PIN in Windows Settings > Accounts > Sign-in options.".to_string()),
-        "DisabledByPolicy" => Err("Disabled by group policy".to_string()),
-        "DeviceBusy" => Err("Device is busy".to_string()),
-        _ => {
-            if stdout.is_empty() {
-                Err("No response from Windows Hello. Make sure Windows Hello is set up in Settings > Accounts > Sign-in options.".to_string())
-            } else {
-                Err(format!("Unexpected response: {}", stdout))
-            }
-        }
+    crate::logger::log("BIOMETRIC", &format!("WBF scan start: {message}"));
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(SCAN_TIMEOUT_SECS),
+        tokio::task::spawn_blocking(wbf_identify_current_user),
+    )
+    .await;
+    match result {
+        Err(_) => Err(format!(
+            "Fingerprint scan timed out after {SCAN_TIMEOUT_SECS}s. Please touch the sensor."
+        )),
+        Ok(Err(e)) => Err(format!("Task join error: {e}")),
+        Ok(Ok(r))  => r,
     }
 }
+
+fn wbf_identify_current_user() -> Result<bool, String> {
+    unsafe {
+        // 1. Get current user SID ─────────────────────────────────────────────
+        let mut h_token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut h_token) == 0 {
+            return Err("OpenProcessToken failed".to_string());
+        }
+
+        let mut len: u32 = 0;
+        GetTokenInformation(h_token, TokenUser, std::ptr::null_mut(), 0, &mut len);
+        let mut buf = vec![0u8; len as usize];
+        if GetTokenInformation(
+            h_token,
+            TokenUser,
+            buf.as_mut_ptr() as *mut _,
+            len,
+            &mut len,
+        ) == 0
+        {
+            CloseHandle(h_token);
+            return Err("GetTokenInformation failed".to_string());
+        }
+        CloseHandle(h_token);
+
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let current_user_sid: PSID = token_user.User.Sid;
+
+        // 2. Open WBF system fingerprint pool ─────────────────────────────────
+        let mut session: u32 = 0;
+        let hr_open = WinBioOpenSession(
+            WINBIO_TYPE_FINGERPRINT,
+            WINBIO_POOL_SYSTEM,
+            WINBIO_FLAG_DEFAULT,
+            std::ptr::null(),  // use all units in the pool
+            0,                 // unitcount = 0 means "all"
+            std::ptr::null(),  // default sensor database
+            &mut session,
+        );
+        if hr_open < 0 {
+            return Err(format!(
+                "WinBioOpenSession failed (HRESULT=0x{hr_open:08X}). \
+                 Enroll a fingerprint in Windows Settings \u{2192} Accounts \u{2192} \
+                 Sign-in options \u{2192} Fingerprint recognition."
+            ));
+        }
+
+        // 3. Block until a finger is placed ────────────────────────────────────
+        let mut unit_id: u32 = 0;
+        let mut identity: WINBIO_IDENTITY = std::mem::zeroed();
+        let mut sub_factor: u8 = 0;
+        let mut reject_detail: u32 = 0;
+
+        let hr_id = WinBioIdentify(
+            session,
+            &mut unit_id,
+            &mut identity,
+            &mut sub_factor,
+            &mut reject_detail,
+        );
+        WinBioCloseSession(session);
+
+        if hr_id < 0 {
+            return Err(format!(
+                "WinBioIdentify failed (HRESULT=0x{hr_id:08X}). \
+                 Make sure your finger is on the sensor and a fingerprint is enrolled."
+            ));
+        }
+
+        // 4. Verify the identity is a SID (WINBIO_ID_TYPE_SID = 3) ─────────────
+        if identity.Type != WINBIO_ID_TYPE_SID {
+            return Err(
+                "Fingerprint not enrolled for this Windows account. \
+                 Enroll it in Settings \u{2192} Accounts \u{2192} Sign-in options."
+                    .to_string(),
+            );
+        }
+
+        // 5. Compare scanned SID with the current user ─────────────────────────
+        // WINBIO_IDENTITY.Value.AccountSid.Data[68] holds the raw SID bytes.
+        let scanned_sid: PSID = identity.Value.AccountSid.Data.as_ptr() as PSID;
+        let matched = EqualSid(current_user_sid, scanned_sid) != 0;
+
+        if !matched {
+            return Err(
+                "Fingerprint recognised but belongs to a different Windows user.".to_string(),
+            );
+        }
+
+        Ok(true)
+    }
+}
+
+// ── DPAPI token persistence ──────────────────────────────────────────────────
 
 pub fn save_biometric_token(password: &str) -> Result<(), String> {
     let path = biometric_token_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir failed: {e}"))?;
     }
-
     let script = format!(
-        "$ErrorActionPreference = 'Stop'; \
+        "$ErrorActionPreference='Stop'; \
          try {{ \
            Add-Type -AssemblyName System.Security; \
-           $bytes = [System.Text.Encoding]::UTF8.GetBytes('{}'); \
-           $entropy = [System.Text.Encoding]::UTF8.GetBytes('OmniLock2026Biometric'); \
-           $protected = [System.Security.Cryptography.ProtectedData]::Protect($bytes, $entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); \
-           [System.IO.File]::WriteAllBytes('{}', $protected); \
-           'OK' \
-         }} catch {{ \
-           Write-Error $_.Exception.Message; \
-           exit 1 \
-         }}",
+           $b=[System.Text.Encoding]::UTF8.GetBytes('{}'); \
+           $ent=[System.Text.Encoding]::UTF8.GetBytes('OmniLock2026Biometric'); \
+           $p=[System.Security.Cryptography.ProtectedData]::Protect($b,$ent,[System.Security.Cryptography.DataProtectionScope]::CurrentUser); \
+           [System.IO.File]::WriteAllBytes('{}', $p); 'OK' \
+         }} catch {{ Write-Error $_.Exception.Message; exit 1 }}",
         password.replace('\'', "''"),
         path.to_string_lossy().replace('\'', "''")
     );
-
     let ps = powershell51_path();
-    let output = crate::hidden_cmd(&ps)
+    let out = crate::hidden_cmd(&ps)
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .output()
-        .map_err(|e| format!("Failed to run DPAPI: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("DPAPI protect failed: {}", stderr));
+        .map_err(|e| format!("DPAPI spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("DPAPI protect failed: {}", String::from_utf8_lossy(&out.stderr)));
     }
-
     Ok(())
 }
 
@@ -195,45 +227,33 @@ pub fn load_biometric_token() -> Result<String, String> {
     if !path.exists() {
         return Err("No biometric token found".to_string());
     }
-
     let script = format!(
-        "$ErrorActionPreference = 'Stop'; \
+        "$ErrorActionPreference='Stop'; \
          try {{ \
            Add-Type -AssemblyName System.Security; \
-           $protected = [System.IO.File]::ReadAllBytes('{}'); \
-           $entropy = [System.Text.Encoding]::UTF8.GetBytes('OmniLock2026Biometric'); \
-           $bytes = [System.Security.Cryptography.ProtectedData]::Unprotect($protected, $entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); \
-           [System.Text.Encoding]::UTF8.GetString($bytes) \
-         }} catch {{ \
-           Write-Error $_.Exception.Message; \
-           exit 1 \
-         }}",
+           $p=[System.IO.File]::ReadAllBytes('{}'); \
+           $ent=[System.Text.Encoding]::UTF8.GetBytes('OmniLock2026Biometric'); \
+           $b=[System.Security.Cryptography.ProtectedData]::Unprotect($p,$ent,[System.Security.Cryptography.DataProtectionScope]::CurrentUser); \
+           [System.Text.Encoding]::UTF8.GetString($b) \
+         }} catch {{ Write-Error $_.Exception.Message; exit 1 }}",
         path.to_string_lossy().replace('\'', "''")
     );
-
     let ps = powershell51_path();
-    let output = crate::hidden_cmd(&ps)
+    let out = crate::hidden_cmd(&ps)
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .output()
-        .map_err(|e| format!("Failed to run DPAPI: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("DPAPI unprotect failed: {}", stderr));
+        .map_err(|e| format!("DPAPI spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("DPAPI unprotect failed: {}", String::from_utf8_lossy(&out.stderr)));
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if stdout.is_empty() {
-        return Err("Empty password from DPAPI".to_string());
-    }
-
-    Ok(stdout)
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() { Err("Empty password from DPAPI".to_string()) } else { Ok(s) }
 }
 
 pub fn remove_biometric_token() -> Result<(), String> {
     let path = biometric_token_path();
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("Failed to remove token: {}", e))?;
+        std::fs::remove_file(&path).map_err(|e| format!("remove token: {e}"))?;
     }
     Ok(())
 }

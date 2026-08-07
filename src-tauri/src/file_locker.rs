@@ -1,12 +1,31 @@
+// File and folder locking via AES-256-GCM encryption.
+//
+// When a file is locked it is encrypted in-place:
+//   original.txt  →  original.txt.omnilock   (encrypted blob)
+//   original.txt  is deleted
+//
+// Encrypted blob layout:
+//   [4]  magic "OLCK"
+//   [1]  version = 1
+//   [12] AES-GCM nonce
+//   [4]  original path length (u32 LE)
+//   [N]  original path (UTF-8)
+//   [*]  AES-256-GCM ciphertext + 16-byte tag
+//
+// Recovery functions (safe_recover_acl, force_unlock, scan_acl_damage,
+// bulk_recover_acl) are kept to fix files that were damaged by the old ACL
+// approach.
+
+use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Key, Nonce};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Security::*;
 use windows_sys::Win32::Security::Authorization::*;
-use windows_sys::Win32::Storage::FileSystem::*;
 use windows_sys::Win32::System::Threading::*;
-use windows_sys::Win32::UI::Shell::*;
+
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 fn to_wide(s: &str) -> Vec<u16> {
     use std::ffi::OsStr;
@@ -14,372 +33,253 @@ fn to_wide(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
 }
 
-fn is_access_denied(ret: u32) -> bool {
-    ret == ERROR_ACCESS_DENIED
+const MAGIC: &[u8; 4] = b"OLCK";
+
+/// Returns the path of the encrypted blob for a given original path.
+pub fn encrypted_path_for(path: &str) -> String {
+    format!("{}.omnilock", path)
 }
 
-fn current_user_sid_buf() -> Result<Vec<u8>, String> {
-    unsafe {
-        let mut h_token = std::ptr::null_mut();
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut h_token) == 0 {
-            return Err("OpenProcessToken failed".to_string());
-        }
-        let mut len: u32 = 0;
-        GetTokenInformation(h_token, TokenUser, std::ptr::null_mut(), 0, &mut len);
-        let mut buf = vec![0u8; len as usize];
-        if GetTokenInformation(h_token, TokenUser, buf.as_mut_ptr() as _, len, &mut len) == 0 {
-            CloseHandle(h_token);
-            return Err("GetTokenInformation failed".to_string());
-        }
-        CloseHandle(h_token);
-        Ok(buf)
-    }
+/// True when the file is locked (encrypted blob exists, original gone).
+pub fn is_file_locked(path: &str) -> bool {
+    let enc = encrypted_path_for(path);
+    Path::new(&enc).exists() && !Path::new(path).exists()
 }
 
-unsafe fn enable_privilege(name: &str) -> Result<(), String> {
-    let mut h_token = std::ptr::null_mut();
-    if OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &mut h_token) == 0 {
-        return Err("OpenProcessToken failed".to_string());
+// ── encryption helpers ────────────────────────────────────────────────────────
+
+fn do_encrypt(data: &[u8], key_material: &[u8]) -> Result<(Vec<u8>, [u8; 12]), String> {
+    if key_material.len() != 32 {
+        return Err("Invalid file encryption key length (expected 32 bytes)".to_string());
     }
-    let name_w = to_wide(name);
-    let mut luid: LUID = std::mem::zeroed();
-    if LookupPrivilegeValueW(std::ptr::null_mut(), name_w.as_ptr(), &mut luid) == 0 {
-        CloseHandle(h_token);
-        return Err(format!("LookupPrivilegeValue({}) failed", name));
+    let key = Key::<Aes256Gcm>::from_slice(key_material);
+    let cipher = Aes256Gcm::new(key);
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::getrandom(&mut nonce_bytes).map_err(|e| format!("RNG error: {e}"))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ct = cipher.encrypt(nonce, data).map_err(|e| format!("Encrypt error: {e}"))?;
+    Ok((ct, nonce_bytes))
+}
+
+fn do_decrypt(ciphertext: &[u8], key_material: &[u8], nonce_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if key_material.len() != 32 {
+        return Err("Invalid file encryption key length (expected 32 bytes)".to_string());
     }
-    let mut tp = TOKEN_PRIVILEGES {
-        PrivilegeCount: 1,
-        Privileges: [LUID_AND_ATTRIBUTES {
-            Luid: luid,
-            Attributes: SE_PRIVILEGE_ENABLED,
-        }],
+    let key = Key::<Aes256Gcm>::from_slice(key_material);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Nonce::from_slice(nonce_bytes);
+    cipher.decrypt(nonce, ciphertext)
+        .map_err(|_| "Decryption failed — wrong key or corrupted file".to_string())
+}
+
+fn write_blob(encrypted_path: &str, nonce: &[u8; 12], original_path: &str, ciphertext: &[u8]) -> Result<(), String> {
+    let path_bytes = original_path.as_bytes();
+    let mut blob = Vec::with_capacity(4 + 1 + 12 + 4 + path_bytes.len() + ciphertext.len());
+    blob.extend_from_slice(MAGIC);
+    blob.push(1u8); // version
+    blob.extend_from_slice(nonce);
+    blob.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
+    blob.extend_from_slice(path_bytes);
+    blob.extend_from_slice(ciphertext);
+    fs::write(encrypted_path, &blob).map_err(|e| format!("Cannot write encrypted file: {e}"))
+}
+
+fn read_blob(encrypted_path: &str) -> Result<([u8; 12], String, Vec<u8>), String> {
+    let blob = fs::read(encrypted_path).map_err(|e| format!("Cannot read encrypted file: {e}"))?;
+    let min_len = 4 + 1 + 12 + 4;
+    if blob.len() < min_len {
+        return Err("Not a valid OmniLock encrypted file (too short)".to_string());
+    }
+    if &blob[..4] != MAGIC {
+        return Err("Not an OmniLock encrypted file (bad magic)".to_string());
+    }
+    // version at [4], ignored for now
+    let nonce: [u8; 12] = blob[5..17].try_into().map_err(|_| "Bad nonce".to_string())?;
+    let path_len = u32::from_le_bytes([blob[17], blob[18], blob[19], blob[20]]) as usize;
+    let path_end = 21 + path_len;
+    if blob.len() < path_end {
+        return Err("Encrypted file header truncated".to_string());
+    }
+    let original_path = String::from_utf8(blob[21..path_end].to_vec())
+        .map_err(|_| "Invalid original path in encrypted file".to_string())?;
+    let ciphertext = blob[path_end..].to_vec();
+    Ok((nonce, original_path, ciphertext))
+}
+
+// ── public lock / unlock API ──────────────────────────────────────────────────
+
+/// Encrypt a single file in-place. Returns the path of the .omnilock file.
+/// The original file is deleted only after the encrypted blob is written.
+pub fn lock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
+    check_protected_path(path)?;
+    if !Path::new(path).exists() {
+        return Err(format!("File does not exist: {path}"));
+    }
+    if is_file_locked(path) {
+        return Ok(encrypted_path_for(path)); // already locked
+    }
+    let data = fs::read(path).map_err(|e| format!("Cannot read file: {e}"))?;
+    let (ciphertext, nonce) = do_encrypt(&data, key_material)?;
+    let enc_path = encrypted_path_for(path);
+    write_blob(&enc_path, &nonce, path, &ciphertext)?;
+    fs::remove_file(path).map_err(|e| format!("Cannot remove original after encrypt: {e}"))?;
+    crate::logger::log("LOCK", &format!("lock_file encrypted: {path} -> {enc_path}"));
+    Ok(enc_path)
+}
+
+/// Decrypt a locked file back to its original path. Returns the original path.
+/// Pass the ORIGINAL path (not the .omnilock path).
+pub fn unlock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
+    let enc_path = encrypted_path_for(path);
+
+    // Support both: caller passes original path or the .omnilock path
+    let blob_path = if Path::new(path).extension().map(|e| e == "omnilock").unwrap_or(false) && Path::new(path).exists() {
+        path.to_string()
+    } else if Path::new(&enc_path).exists() {
+        enc_path.clone()
+    } else {
+        return Err(format!("No encrypted file found for: {path}"));
     };
-    let ret = AdjustTokenPrivileges(h_token, 0, &mut tp, std::mem::size_of::<TOKEN_PRIVILEGES>() as u32, std::ptr::null_mut(), std::ptr::null_mut());
-    let gle = GetLastError();
-    if ret == 0 || gle != 0 {
-        CloseHandle(h_token);
-        return Err(format!("AdjustTokenPrivileges({}) failed: err={}", name, gle));
+
+    let (nonce, original_path, ciphertext) = read_blob(&blob_path)?;
+    let plaintext = do_decrypt(&ciphertext, key_material, &nonce)?;
+
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(&original_path).parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create parent dir: {e}"))?;
     }
-    CloseHandle(h_token);
-    Ok(())
+
+    // Never silently overwrite a file the user (re)created while a blob existed.
+    if Path::new(&original_path).exists() {
+        return Err(format!(
+            "Refusing to overwrite existing file: {original_path}. \
+             Move or delete it first, then unlock again."
+        ));
+    }
+    fs::write(&original_path, plaintext).map_err(|e| format!("Cannot write decrypted file: {e}"))?;
+    fs::remove_file(&blob_path).map_err(|e| format!("Cannot remove encrypted blob: {e}"))?;
+    crate::logger::log("UNLOCK", &format!("unlock_file decrypted: {blob_path} -> {original_path}"));
+    Ok(original_path)
 }
 
-fn make_safe_dacl() -> Result<(*mut ACL, Vec<u8>), String> {
-    unsafe {
-        let buf = current_user_sid_buf()?;
-        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
-
-        let mut admin_sid: PSID = std::ptr::null_mut();
-        let admin_sid_str = to_wide("S-1-5-32-544");
-        ConvertStringSidToSidW(admin_sid_str.as_ptr(), &mut admin_sid);
-
-        let mut system_sid: PSID = std::ptr::null_mut();
-        let system_sid_str = to_wide("S-1-5-18");
-        ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid);
-
-        let mut entries: Vec<EXPLICIT_ACCESS_W> = Vec::new();
-
-        let mut ea_user: EXPLICIT_ACCESS_W = std::mem::zeroed();
-        ea_user.grfAccessPermissions = GENERIC_ALL;
-        ea_user.grfAccessMode = GRANT_ACCESS;
-        ea_user.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-        ea_user.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-        ea_user.Trustee.TrusteeType = TRUSTEE_IS_USER;
-        ea_user.Trustee.ptstrName = token_user.User.Sid as *mut u16;
-        entries.push(ea_user);
-
-        if !admin_sid.is_null() {
-            let mut ea_admin: EXPLICIT_ACCESS_W = std::mem::zeroed();
-            ea_admin.grfAccessPermissions = GENERIC_ALL;
-            ea_admin.grfAccessMode = GRANT_ACCESS;
-            ea_admin.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-            ea_admin.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-            ea_admin.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
-            ea_admin.Trustee.ptstrName = admin_sid as *mut u16;
-            entries.push(ea_admin);
-        }
-
-        if !system_sid.is_null() {
-            let mut ea_system: EXPLICIT_ACCESS_W = std::mem::zeroed();
-            ea_system.grfAccessPermissions = GENERIC_ALL;
-            ea_system.grfAccessMode = GRANT_ACCESS;
-            ea_system.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-            ea_system.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-            ea_system.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-            ea_system.Trustee.ptstrName = system_sid as *mut u16;
-            entries.push(ea_system);
-        }
-
-        let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = SetEntriesInAclW(entries.len() as u32, entries.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl);
-
-        if !admin_sid.is_null() { LocalFree(admin_sid as _); }
-        if !system_sid.is_null() { LocalFree(system_sid as _); }
-
-        if ret != 0 {
-            return Err(format!("SetEntriesInAclW failed: {}", ret));
-        }
-
-        Ok((new_dacl, buf))
+/// Lock all files inside a folder recursively. The folder itself stays visible.
+/// Returns the number of files encrypted.
+pub fn lock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
+    check_protected_path(path)?;
+    let dir = Path::new(path);
+    if !dir.exists() || !dir.is_dir() {
+        return Err(format!("Folder does not exist: {path}"));
     }
+    let count = encrypt_dir_recursive(dir, key_material)?;
+    crate::logger::log("LOCK", &format!("lock_folder encrypted {count} files: {path}"));
+    Ok(count)
 }
 
-pub fn safe_recover_acl(path: &str) -> Result<(), String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
+/// Decrypt all .omnilock files inside a folder recursively.
+/// Returns the number of files decrypted.
+pub fn unlock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
+    let dir = Path::new(path);
+    if !dir.exists() || !dir.is_dir() {
+        return Err(format!("Folder does not exist: {path}"));
     }
-
-    unsafe {
-        let path_wide = to_wide(path);
-
-        enable_privilege("SeTakeOwnershipPrivilege")?;
-
-        let (new_dacl, buf) = make_safe_dacl()?;
-        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
-
-        // Set both owner and DACL in one call
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-            token_user.User.Sid,
-            std::ptr::null_mut(),
-            new_dacl,
-            std::ptr::null_mut(),
-        );
-
-        LocalFree(new_dacl as *mut _);
-
-        if ret != 0 {
-            return Err(format!("SetNamedSecurityInfo failed: err={}", ret));
-        }
-        Ok(())
-    }
+    let count = decrypt_dir_recursive(dir, key_material)?;
+    crate::logger::log("UNLOCK", &format!("unlock_folder decrypted {count} files: {path}"));
+    Ok(count)
 }
 
-// Forcefully remove ACL restrictions by taking ownership and resetting DACL
-// This is a more aggressive approach for stubborn files
-pub fn force_unlock(path: &str) -> Result<(), String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
-    }
-
-    unsafe {
-        let path_wide = to_wide(path);
-
-        // Enable both privileges
-        enable_privilege("SeTakeOwnershipPrivilege")?;
-        enable_privilege("SeRestorePrivilege")?;
-
-        // Step 1: Take ownership
-        let mut system_sid: PSID = std::ptr::null_mut();
-        let system_sid_str = to_wide("S-1-5-18");
-        if ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid) == 0 {
-            return Err("ConvertStringSidToSid(SYSTEM) failed".to_string());
-        }
-
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            system_sid,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
-        LocalFree(system_sid as _);
-
-        if ret != 0 {
-            return Err(format!("Take ownership failed: err={}", ret));
-        }
-
-        // Step 2: Get current user SID
-        let buf = current_user_sid_buf()?;
-        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
-
-        // Step 3: Reset DACL to safe state
-        let (new_dacl, _) = make_safe_dacl()?;
-
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            new_dacl,
-            std::ptr::null_mut(),
-        );
-
-        LocalFree(new_dacl as *mut _);
-
-        if ret != 0 {
-            return Err(format!("Reset DACL failed: err={}", ret));
-        }
-
-        // Step 4: Restore ownership to current user
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            token_user.User.Sid,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
-
-        if ret != 0 {
-            return Err(format!("Restore ownership failed: err={}", ret));
-        }
-
-        Ok(())
-    }
+/// True when the folder contains at least one .omnilock file (i.e. is locked).
+pub fn is_folder_locked(path: &str) -> bool {
+    Path::new(path).is_dir() && dir_has_omnilock(Path::new(path))
 }
 
-fn apply_safe_lock(path: &str) -> Result<(), String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
+fn dir_has_omnilock(dir: &Path) -> bool {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().map(|x| x == "omnilock").unwrap_or(false) {
+                return true;
+            }
+            if p.is_dir() && dir_has_omnilock(&p) {
+                return true;
+            }
+        }
     }
-
-    unsafe {
-        let path_wide = to_wide(path);
-        enable_privilege("SeTakeOwnershipPrivilege")?;
-
-        // Set owner to SYSTEM so user loses ownership-based privileges
-        let mut system_sid: PSID = std::ptr::null_mut();
-        let system_sid_str = to_wide("S-1-5-18");
-        if ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid) == 0 {
-            return Err(format!("ConvertStringSidToSid(SYSTEM) failed"));
-        }
-
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            system_sid,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
-        LocalFree(system_sid as _);
-
-        if ret != 0 {
-            return Err(format!("SetNamedSecurityInfo(OWNER=SYSTEM) failed: err={}", ret));
-        }
-
-        // Replace DACL: only Administrators + SYSTEM, current user removed
-        let mut admin_sid: PSID = std::ptr::null_mut();
-        let admin_sid_str = to_wide("S-1-5-32-544");
-        ConvertStringSidToSidW(admin_sid_str.as_ptr(), &mut admin_sid);
-
-        let mut sys_sid2: PSID = std::ptr::null_mut();
-        let sys_sid2_str = to_wide("S-1-5-18");
-        ConvertStringSidToSidW(sys_sid2_str.as_ptr(), &mut sys_sid2);
-
-        let mut entries: Vec<EXPLICIT_ACCESS_W> = Vec::new();
-
-        if !admin_sid.is_null() {
-            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
-            ea.grfAccessPermissions = GENERIC_ALL;
-            ea.grfAccessMode = GRANT_ACCESS;
-            ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-            ea.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
-            ea.Trustee.ptstrName = admin_sid as *mut u16;
-            entries.push(ea);
-        }
-
-        if !sys_sid2.is_null() {
-            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
-            ea.grfAccessPermissions = GENERIC_ALL;
-            ea.grfAccessMode = GRANT_ACCESS;
-            ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-            ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-            ea.Trustee.ptstrName = sys_sid2 as *mut u16;
-            entries.push(ea);
-        }
-
-        let mut new_dacl: *mut ACL = std::ptr::null_mut();
-        let ret = SetEntriesInAclW(entries.len() as u32, entries.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl);
-
-        if !admin_sid.is_null() { LocalFree(admin_sid as _); }
-        if !sys_sid2.is_null() { LocalFree(sys_sid2 as _); }
-        if ret != 0 {
-            return Err(format!("SetEntriesInAclW failed: {}", ret));
-        }
-
-        let ret = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            new_dacl,
-            std::ptr::null_mut(),
-        );
-
-        LocalFree(new_dacl as *mut _);
-
-        if ret != 0 {
-            return Err(format!("SetNamedSecurityInfo(DACL) failed: err={}", ret));
-        }
-        Ok(())
-    }
+    false
 }
 
-fn remove_safe_lock(path: &str) -> Result<(), String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
-    }
-
-    unsafe {
-        let path_wide = to_wide(path);
-        enable_privilege("SeTakeOwnershipPrivilege")?;
-
-        let (new_dacl, buf) = make_safe_dacl()?;
-        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
-
-        // Step 1: restore DACL first (needs WRITE_DAC via Administrators group)
-        let ret1 = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            new_dacl,
-            std::ptr::null_mut(),
-        );
-
-        if ret1 != 0 {
-            LocalFree(new_dacl as *mut _);
-            return Err(format!("SetNamedSecurityInfo(DACL) failed: err={}", ret1));
+fn encrypt_dir_recursive(dir: &Path, key: &[u8]) -> Result<usize, String> {
+    let mut count = 0;
+    let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read dir: {e}"))?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        // Never follow symlinks/junctions — they could point OUTSIDE the locked tree.
+        if p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            continue;
         }
-
-        // Step 2: restore owner to current user (needs SeTakeOwnershipPrivilege)
-        let ret2 = SetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            token_user.User.Sid,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
-
-        LocalFree(new_dacl as *mut _);
-
-        if ret2 != 0 {
-            return Err(format!("SetNamedSecurityInfo(OWNER) failed: err={}", ret2));
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        // Skip already-encrypted blobs and OmniLock's own files
+        if name.ends_with(".omnilock") || name == "desktop.ini" {
+            continue;
         }
-        Ok(())
+        if p.is_dir() {
+            count += encrypt_dir_recursive(&p, key)?;
+        } else if p.is_file() {
+            match lock_file(&p.to_string_lossy(), key) {
+                Ok(_) => count += 1,
+                Err(e) => crate::logger::log("LOCK", &format!("encrypt_dir skip {}: {e}", p.display())),
+            }
+        }
     }
+    Ok(count)
 }
 
+fn decrypt_dir_recursive(dir: &Path, key: &[u8]) -> Result<usize, String> {
+    let mut count = 0;
+    let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read dir: {e}"))?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        // Never follow symlinks/junctions — they could point OUTSIDE the locked tree.
+        if p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            continue;
+        }
+        if p.is_dir() {
+            count += decrypt_dir_recursive(&p, key)?;
+        } else if p.extension().map(|x| x == "omnilock").unwrap_or(false) {
+            let path_str = p.to_string_lossy().to_string();
+            match unlock_file(&path_str, key) {
+                Ok(_) => count += 1,
+                Err(e) => crate::logger::log("UNLOCK", &format!("decrypt_dir skip {path_str}: {e}")),
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// verify_lock: returns true if the path (or its encrypted counterpart) is locked.
+pub fn verify_lock(path: &str) -> Result<bool, String> {
+    // Encryption-based lock: .omnilock file exists, original gone
+    if is_file_locked(path) {
+        return Ok(true);
+    }
+    // Folder lock: contains .omnilock files
+    if Path::new(path).is_dir() {
+        return Ok(is_folder_locked(path));
+    }
+    // Caller passed the .omnilock path directly
+    if path.ends_with(".omnilock") && Path::new(path).exists() {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+// ── backup helpers (kept for restore functionality) ───────────────────────────
+
+#[allow(dead_code)] // reserved: create_backup_before_lock was removed in the encryption rewrite
 fn backup_path_for(path: &str) -> Result<PathBuf, String> {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     let safe_name = path.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '_', "_");
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let backup_dir = PathBuf::from(appdata)
@@ -387,54 +287,11 @@ fn backup_path_for(path: &str) -> Result<PathBuf, String> {
         .join("OmniLock")
         .join("backups")
         .join(&safe_name);
-    fs::create_dir_all(&backup_dir).map_err(|e| format!("Cannot create backup dir: {}", e))?;
-    let name = Path::new(path)
-        .file_name()
+    fs::create_dir_all(&backup_dir).map_err(|e| format!("Cannot create backup dir: {e}"))?;
+    let name = Path::new(path).file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    let ext = Path::new(path)
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    let stem = if name.ends_with(&ext) && ext.len() > 1 {
-        &name[..name.len() - ext.len()]
-    } else {
-        &name
-    };
-    Ok(backup_dir.join(format!("{}_{}{}", stem, now, ext)))
-}
-
-fn create_backup_before_lock(path: &str) -> Result<(), String> {
-    let src = Path::new(path);
-    if !src.exists() {
-        return Ok(());
-    }
-    let dst = backup_path_for(path)?;
-    if src.is_dir() {
-        let manifest_path = dst.with_extension("json");
-        let mut entries = Vec::new();
-        if let Ok(dir_entries) = fs::read_dir(src) {
-            for entry in dir_entries.flatten() {
-                entries.push(entry.path().to_string_lossy().to_string());
-            }
-        }
-        let meta = serde_json::json!({
-            "path": path,
-            "backup_time": SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-            "contents": entries,
-        });
-        fs::write(&manifest_path, serde_json::to_string_pretty(&meta).unwrap())
-            .map_err(|e| format!("Cannot write backup manifest: {}", e))?;
-    } else {
-        fs::copy(src, &dst).map_err(|e| format!("Cannot create backup: {}", e))?;
-        let mut perms = fs::metadata(&dst).map_err(|e| e.to_string())?.permissions();
-        perms.set_readonly(true);
-        fs::set_permissions(&dst, perms).ok();
-    }
-    Ok(())
+    Ok(backup_dir.join(format!("{}_{}.enc_backup", name, now)))
 }
 
 pub fn list_backups(path: &str) -> Result<Vec<(String, u64)>, String> {
@@ -452,16 +309,12 @@ pub fn list_backups(path: &str) -> Result<Vec<(String, u64)>, String> {
     if let Ok(entries) = fs::read_dir(&backup_dir) {
         for entry in entries.flatten() {
             let meta = entry.metadata().ok();
-            let _size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-            if let Some(modified) = meta.and_then(|m| m.modified().ok()) {
-                let secs = modified
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                backups.push((entry.path().to_string_lossy().to_string(), secs));
-            } else {
-                backups.push((entry.path().to_string_lossy().to_string(), 0));
-            }
+            let secs = meta.as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            backups.push((entry.path().to_string_lossy().to_string(), secs));
         }
     }
     backups.sort_by(|a, b| b.1.cmp(&a.1));
@@ -469,222 +322,268 @@ pub fn list_backups(path: &str) -> Result<Vec<(String, u64)>, String> {
 }
 
 pub fn restore_backup(backup_path: &str, target_path: &str) -> Result<(), String> {
-    let src = Path::new(backup_path);
-    let dst = Path::new(target_path);
-    if !src.exists() {
+    if !Path::new(backup_path).exists() {
         return Err("Backup file does not exist".to_string());
     }
-    if let Some(parent) = dst.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Cannot create target parent: {}", e))?;
+    if let Some(parent) = Path::new(target_path).parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create parent: {e}"))?;
     }
-    fs::copy(src, dst).map_err(|e| format!("Cannot restore backup: {}", e))?;
+    fs::copy(backup_path, target_path).map_err(|e| format!("Cannot restore: {e}"))?;
     Ok(())
 }
 
-pub fn lock_file(path: &str) -> Result<(), String> {
-    create_backup_before_lock(path)?;
-    apply_safe_lock(path)
-}
+// ── critical-path guard ───────────────────────────────────────────────────────
 
-pub fn unlock_file(path: &str) -> Result<(), String> {
-    remove_safe_lock(path)
-}
-
-fn apply_lock_icon(path: &str) -> Result<(), String> {
-    let dir = Path::new(path);
-    if !dir.is_dir() {
-        return Err("Not a directory".to_string());
+/// Refuse to lock paths that would be catastrophic (drive roots, the vault
+/// directory — which contains the key that unlocks everything — and the app's
+/// own executable).
+fn check_protected_path(path: &str) -> Result<(), String> {
+    let trimmed = path.trim_end_matches(['\\', '/']);
+    // Drive root like "D:" or "D:"
+    if trimmed.len() == 2 && trimmed.as_bytes()[1] == b':' {
+        return Err(format!(
+            "Refusing to encrypt a whole drive root ({path}). \
+             Lock drives via drive locking (NoDrives) instead."
+        ));
     }
-
-    let ini_path = dir.join("desktop.ini");
-    let ini_content = "[.ShellClassInfo]\r\nIconResource=%SystemRoot%\\system32\\imageres.dll,204\r\n";
-    fs::write(&ini_path, ini_content).map_err(|e| e.to_string())?;
-
-    unsafe {
-        let ini_wide = to_wide(&ini_path.to_string_lossy());
-        SetFileAttributesW(ini_wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
-        SHChangeNotify(SHCNE_UPDATEITEM as i32, SHCNF_PATHW as u32, ini_wide.as_ptr() as _, std::ptr::null_mut());
-    }
-
-    Ok(())
-}
-
-fn remove_lock_icon(path: &str) -> Result<(), String> {
-    let dir = Path::new(path);
-    let ini_path = dir.join("desktop.ini");
-    if ini_path.exists() {
-        unsafe {
-            let ini_wide = to_wide(&ini_path.to_string_lossy());
-            SetFileAttributesW(ini_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+    // Vault directory — locking it would encrypt the key itself
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let vault_dir = PathBuf::from(appdata).join("InnologyBD");
+        if path.to_lowercase().starts_with(&vault_dir.to_string_lossy().to_lowercase()) {
+            return Err(format!(
+                "Refusing to lock the OmniLock vault directory ({path}) — \
+                 this would make locked files unrecoverable."
+            ));
         }
-        fs::remove_file(&ini_path).map_err(|e| e.to_string())?;
-
-        unsafe {
-            let folder_wide = to_wide(path);
-            SHChangeNotify(SHCNE_UPDATEITEM as i32, SHCNF_PATHW as u32, folder_wide.as_ptr() as _, std::ptr::null_mut());
+    }
+    // The running executable
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_lower = exe.to_string_lossy().to_lowercase();
+        let path_lower = path.to_lowercase();
+        if path_lower == exe_lower
+            || path_lower == format!("{}.omnilock", exe_lower)
+        {
+            return Err("Refusing to lock the OmniLock executable itself.".to_string());
         }
     }
     Ok(())
 }
 
-pub fn lock_folder(path: &str) -> Result<(), String> {
-    let dir_path = Path::new(path);
-    if !dir_path.exists() || !dir_path.is_dir() {
-        return Err(format!("Folder does not exist: {}", path));
+// ── ACL recovery (fixes damage from old lock mechanism) ───────────────────────
+
+unsafe fn enable_privilege(name: &str) -> Result<(), String> {
+    let mut h_token: HANDLE = std::ptr::null_mut();
+    if OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &mut h_token) == 0 {
+        return Err("OpenProcessToken failed".to_string());
     }
-    create_backup_before_lock(path)?;
-    apply_safe_lock(path)?;
-    apply_lock_icon(path)?;
-    Ok(())
-}
-
-pub fn verify_lock(path: &str) -> Result<bool, String> {
-    if !Path::new(path).exists() {
-        return Err(format!("Path does not exist: {}", path));
+    let name_w = to_wide(name);
+    let mut luid: LUID = std::mem::zeroed();
+    if LookupPrivilegeValueW(std::ptr::null_mut(), name_w.as_ptr(), &mut luid) == 0 {
+        CloseHandle(h_token);
+        return Err(format!("LookupPrivilegeValue({name}) failed"));
     }
-
-    unsafe {
-        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-        let path_wide = to_wide(path);
-
-        let ret = GetNamedSecurityInfoW(
-            path_wide.as_ptr(),
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &mut sd,
-        );
-
-        if is_access_denied(ret) {
-            return Ok(true);
-        }
-        if ret != 0 {
-            return Err(format!("GetNamedSecurityInfo failed: {}", ret));
-        }
-
-        // Check owner: SYSTEM = locked
-        let mut owner_sid: PSID = std::ptr::null_mut();
-        let mut owner_defaulted: i32 = 0;
-        GetSecurityDescriptorOwner(sd, &mut owner_sid, &mut owner_defaulted);
-
-        if !owner_sid.is_null() {
-            let system_sid_str = to_wide("S-1-5-18");
-            let mut system_sid: PSID = std::ptr::null_mut();
-            if ConvertStringSidToSidW(system_sid_str.as_ptr(), &mut system_sid) != 0 {
-                let is_system = EqualSid(owner_sid, system_sid) != 0;
-                LocalFree(system_sid as _);
-                LocalFree(sd);
-                return Ok(is_system);
-            }
-        }
-
-        LocalFree(sd);
-        Ok(false)
-    }
-}
-
-pub fn unlock_folder(path: &str) -> Result<(), String> {
-    let dir_path = Path::new(path);
-    if !dir_path.exists() || !dir_path.is_dir() {
-        return Err(format!("Folder does not exist: {}", path));
-    }
-    
-    crate::logger::log("UNLOCK", &format!("unlock_folder start: {}", path));
-    
-    remove_safe_lock(path)?;
-    crate::logger::log("UNLOCK", &format!("unlock_folder parent unlocked: {}", path));
-    
-    remove_lock_icon(path)?;
-    
-    // Recursively reset ACLs on child files that inherited the restricted DACL
-    match unlock_children_recursive(dir_path) {
-        Ok(()) => {
-            crate::logger::log("UNLOCK", &format!("unlock_folder recursive complete: {}", path));
-        }
-        Err(e) => {
-            crate::logger::log("UNLOCK", &format!("unlock_folder recursive warning: {} err={}", path, e));
-            // Don't fail the entire operation if recursive unlock has issues
-        }
-    }
-    
-    Ok(())
-}
-
-fn unlock_children_recursive(dir: &Path) -> Result<(), String> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    
-    // Use Win32 API to enumerate files, which works even with restricted ACLs
-    // when we have SeTakeOwnershipPrivilege
-    unsafe { unlock_files_recursive(dir) }
-}
-
-// Recursively unlock files using FindFirstFile/FindNextFile
-// This works even when read_dir fails due to ACL restrictions
-unsafe fn unlock_files_recursive(dir: &Path) -> Result<(), String> {
-    use windows_sys::Win32::Storage::FileSystem::{
-        FindFirstFileW, FindNextFileW, FindClose, WIN32_FIND_DATAW,
-        FILE_ATTRIBUTE_DIRECTORY,
+    let mut tp = TOKEN_PRIVILEGES {
+        PrivilegeCount: 1,
+        Privileges: [LUID_AND_ATTRIBUTES { Luid: luid, Attributes: SE_PRIVILEGE_ENABLED }],
     };
-    
-    let search_wide = format!(r"{}\*", dir.to_string_lossy());
-    let search_w: Vec<u16> = to_wide(&search_wide);
-    
-    let mut find_data: WIN32_FIND_DATAW = std::mem::zeroed();
-    let handle = FindFirstFileW(search_w.as_ptr(), &mut find_data);
-    
-    if handle == INVALID_HANDLE_VALUE {
-        // Fallback to read_dir if FindFirstFile fails
-        let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read directory: {}", e))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("Error reading entry: {}", e))?;
-            let child = entry.path();
-            let path_str = child.to_string_lossy().to_string();
-            if child.is_dir() {
-                // Reset the child directory ACL too — it inherits the restricted
-                // DACL but keeps the original owner, so verify_lock can't detect it
-                remove_safe_lock(&path_str).ok();
-                unlock_files_recursive(&child)?;
-            } else if child.is_file() {
-                remove_safe_lock(&path_str).ok();
-            }
-        }
-        return Ok(());
-    }
-    
-    loop {
-        let name = String::from_utf16_lossy(
-            &find_data.cFileName[..find_data.cFileName.iter().position(|&c| c == 0).unwrap_or(find_data.cFileName.len())]
-        );
-        
-        if name != "." && name != ".." {
-            let child_path = dir.join(&name);
-            let attrs = find_data.dwFileAttributes;
-            let path_str = child_path.to_string_lossy().to_string();
-            
-            if attrs & FILE_ATTRIBUTE_DIRECTORY != 0 {
-                // Reset the child directory ACL first, then recurse
-                remove_safe_lock(&path_str).ok();
-                unlock_files_recursive(&child_path)?;
-            } else {
-                // It's a file - unconditionally reset its ACL to the safe state.
-                // Child files inherit the restricted DACL but keep their original
-                // owner, so verify_lock (owner == SYSTEM) cannot detect them.
-                remove_safe_lock(&path_str).ok();
-            }
-        }
-        
-        let mut next_data: WIN32_FIND_DATAW = std::mem::zeroed();
-        if FindNextFileW(handle, &mut next_data) == 0 {
-            break;
-        }
-        find_data = next_data;
-    }
-    
-    FindClose(handle);
+    AdjustTokenPrivileges(h_token, 0, &mut tp, std::mem::size_of::<TOKEN_PRIVILEGES>() as u32,
+        std::ptr::null_mut(), std::ptr::null_mut());
+    CloseHandle(h_token);
     Ok(())
+}
+
+fn current_user_sid_buf() -> Result<Vec<u8>, String> {
+    unsafe {
+        let mut h_token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut h_token) == 0 {
+            return Err("OpenProcessToken failed".to_string());
+        }
+        let mut len: u32 = 0;
+        GetTokenInformation(h_token, TokenUser, std::ptr::null_mut(), 0, &mut len);
+        let mut buf = vec![0u8; len as usize];
+        if GetTokenInformation(h_token, TokenUser, buf.as_mut_ptr() as _, len, &mut len) == 0 {
+            CloseHandle(h_token);
+            return Err("GetTokenInformation failed".to_string());
+        }
+        CloseHandle(h_token);
+        Ok(buf)
+    }
+}
+
+fn make_safe_dacl() -> Result<(*mut ACL, Vec<u8>), String> {
+    unsafe {
+        let buf = current_user_sid_buf()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+
+        let mut admin_sid: PSID = std::ptr::null_mut();
+        ConvertStringSidToSidW(to_wide("S-1-5-32-544").as_ptr(), &mut admin_sid);
+        let mut system_sid: PSID = std::ptr::null_mut();
+        ConvertStringSidToSidW(to_wide("S-1-5-18").as_ptr(), &mut system_sid);
+
+        let mut entries: Vec<EXPLICIT_ACCESS_W> = Vec::new();
+
+        let mut ea_user: EXPLICIT_ACCESS_W = std::mem::zeroed();
+        ea_user.grfAccessPermissions = GENERIC_ALL;
+        ea_user.grfAccessMode = GRANT_ACCESS;
+        ea_user.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+        ea_user.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        ea_user.Trustee.TrusteeType = TRUSTEE_IS_USER;
+        ea_user.Trustee.ptstrName = token_user.User.Sid as *mut u16;
+        entries.push(ea_user);
+
+        if !admin_sid.is_null() {
+            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea.grfAccessPermissions = GENERIC_ALL;
+            ea.grfAccessMode = GRANT_ACCESS;
+            ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+            ea.Trustee.ptstrName = admin_sid as *mut u16;
+            entries.push(ea);
+        }
+        if !system_sid.is_null() {
+            let mut ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+            ea.grfAccessPermissions = GENERIC_ALL;
+            ea.grfAccessMode = GRANT_ACCESS;
+            ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+            ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+            ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
+            ea.Trustee.ptstrName = system_sid as *mut u16;
+            entries.push(ea);
+        }
+
+        let mut new_dacl: *mut ACL = std::ptr::null_mut();
+        let ret = SetEntriesInAclW(entries.len() as u32, entries.as_mut_ptr(), std::ptr::null_mut(), &mut new_dacl);
+
+        if !admin_sid.is_null() { LocalFree(admin_sid as _); }
+        if !system_sid.is_null() { LocalFree(system_sid as _); }
+
+        if ret != 0 { return Err(format!("SetEntriesInAclW failed: {ret}")); }
+        Ok((new_dacl, buf))
+    }
+}
+
+pub fn safe_recover_acl(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {path}"));
+    }
+    unsafe {
+        let path_wide = to_wide(path);
+        enable_privilege("SeTakeOwnershipPrivilege")?;
+        let (new_dacl, buf) = make_safe_dacl()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let ret = SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            token_user.User.Sid, std::ptr::null_mut(), new_dacl, std::ptr::null_mut());
+        LocalFree(new_dacl as *mut _);
+        if ret != 0 { return Err(format!("SetNamedSecurityInfo failed: err={ret}")); }
+        Ok(())
+    }
+}
+
+pub fn force_unlock(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Path does not exist: {path}"));
+    }
+    unsafe {
+        let path_wide = to_wide(path);
+        enable_privilege("SeTakeOwnershipPrivilege")?;
+        enable_privilege("SeRestorePrivilege")?;
+
+        // Take ownership as SYSTEM first
+        let mut system_sid: PSID = std::ptr::null_mut();
+        ConvertStringSidToSidW(to_wide("S-1-5-18").as_ptr(), &mut system_sid);
+        SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+            system_sid, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+        if !system_sid.is_null() { LocalFree(system_sid as _); }
+
+        // Reset DACL
+        let (new_dacl, buf) = make_safe_dacl()?;
+        SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(), std::ptr::null_mut(), new_dacl, std::ptr::null_mut());
+        LocalFree(new_dacl as *mut _);
+
+        // Restore owner to current user
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let ret = SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+            token_user.User.Sid, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+        if ret != 0 { return Err(format!("Restore ownership failed: err={ret}")); }
+        Ok(())
+    }
+}
+
+// ── ACL damage scanner (for fixing old-format locks) ─────────────────────────
+
+pub fn scan_acl_damage(root: &str) -> Vec<String> {
+    let mut damaged: Vec<String> = Vec::new();
+    scan_recursive(Path::new(root), &mut damaged);
+    damaged
+}
+
+fn is_owned_by_system(path: &str) -> bool {
+    unsafe {
+        let path_wide = to_wide(path);
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let ret = GetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION, std::ptr::null_mut(), std::ptr::null_mut(),
+            std::ptr::null_mut(), std::ptr::null_mut(), &mut sd);
+        if ret != 0 { return false; }
+
+        let mut owner_sid: PSID = std::ptr::null_mut();
+        let mut defaulted: i32 = 0;
+        GetSecurityDescriptorOwner(sd, &mut owner_sid, &mut defaulted);
+
+        let mut result = false;
+        if !owner_sid.is_null() {
+            let mut system_sid: PSID = std::ptr::null_mut();
+            if ConvertStringSidToSidW(to_wide("S-1-5-18").as_ptr(), &mut system_sid) != 0 {
+                result = EqualSid(owner_sid, system_sid) != 0;
+                LocalFree(system_sid as *mut _);
+            }
+        }
+        LocalFree(sd as *mut _);
+        result
+    }
+}
+
+fn scan_recursive(dir: &Path, out: &mut Vec<String>) {
+    let dir_str = dir.to_string_lossy().to_string();
+    if is_owned_by_system(&dir_str) {
+        out.push(dir_str.clone());
+    }
+    unsafe {
+        use windows_sys::Win32::Storage::FileSystem::{FindFirstFileW, FindNextFileW, FindClose, WIN32_FIND_DATAW, FILE_ATTRIBUTE_DIRECTORY};
+        let pattern = format!(r"{}\*", dir_str);
+        let pattern_w = to_wide(&pattern);
+        let mut find_data: WIN32_FIND_DATAW = std::mem::zeroed();
+        let handle = FindFirstFileW(pattern_w.as_ptr(), &mut find_data);
+        if handle == INVALID_HANDLE_VALUE { return; }
+        loop {
+            let name = String::from_utf16_lossy(
+                &find_data.cFileName[..find_data.cFileName.iter().position(|&c| c == 0).unwrap_or(find_data.cFileName.len())]
+            );
+            if name != "." && name != ".." {
+                let child = dir.join(&name);
+                let child_str = child.to_string_lossy().to_string();
+                if find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+                    scan_recursive(&child, out);
+                } else if is_owned_by_system(&child_str) {
+                    out.push(child_str);
+                }
+            }
+            let mut next: WIN32_FIND_DATAW = std::mem::zeroed();
+            if FindNextFileW(handle, &mut next) == 0 { break; }
+            find_data = next;
+        }
+        FindClose(handle);
+    }
+}
+
+pub fn bulk_recover_acl(paths: &[String]) -> Vec<(String, String)> {
+    paths.iter().map(|p| {
+        match force_unlock(p) {
+            Ok(()) => (p.clone(), "ok".to_string()),
+            Err(e) => (p.clone(), e),
+        }
+    }).collect()
 }

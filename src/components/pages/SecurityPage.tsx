@@ -402,7 +402,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
       <div className="glass rounded-2xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <Fingerprint className="w-5 h-5 text-[color:var(--primary)]" />
-          <h3 className="font-semibold">Biometric Login (Windows Hello)</h3>
+          <h3 className="font-semibold">Biometric Login (Fingerprint)</h3>
           {config?.biometric_enabled ? (
             <span className="ml-auto text-xs px-2 py-1 rounded-full bg-[color:var(--success)]/15 text-[color:var(--success)]">Enabled</span>
           ) : (

@@ -1,9 +1,12 @@
-name: Build OmniLock
+name: Build & Release OmniLock
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    tags:
+      - "v*.*.*"
+    branches:
+      - main
 
 jobs:
   build:
@@ -34,20 +37,45 @@ jobs:
         run: npm ci
 
       - name: Build service daemon
+        shell: bash
         run: |
           cargo build --release --manifest-path service/Cargo.toml
           mkdir -p src-tauri/resources
-          copy service\target\release\omnilock-svc.exe src-tauri\resources\
-          copy service\target\release\omnilock-monitor.exe src-tauri\resources\
+          # cp -f overwrites the committed resource binaries (PowerShell's copy
+          # refuses to overwrite existing files, which broke every previous run).
+          cp -f service/target/release/omnilock-svc.exe src-tauri/resources/
+          cp -f service/target/release/omnilock-monitor.exe src-tauri/resources/
 
-      - name: Build Tauri app
+      - name: Build & Release (tagged push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "OmniLock ${{ github.ref_name }}"
+          releaseBody: |
+            ## What's new
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+            ## Installation
+            Download `OmniLock_*_x64-setup.exe` below and run it.
+            The `.sig` file contains the update signature for auto-updater verification.
+          releaseDraft: false
+          prerelease: false
+
+      - name: Build only (non-tagged push / workflow_dispatch)
+        if: "!startsWith(github.ref, 'refs/tags/')"
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Upload installer
+      - name: Upload installer artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: OmniLock-installer

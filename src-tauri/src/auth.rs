@@ -39,6 +39,13 @@ pub fn setup_vault(payload: SetupPayload) -> Result<(), String> {
     config.totp_enabled = totp_enabled;
     config.totp_secret = payload.totp_secret;
 
+    // Generate the file encryption key — 32 random bytes stored in the vault.
+    // This key is used to AES-256-GCM encrypt locked files/folders.
+    // It never changes when the master password changes.
+    let mut file_key = vec![0u8; 32];
+    getrandom::getrandom(&mut file_key).map_err(|e| format!("Failed to generate file key: {}", e))?;
+    config.file_encryption_key = file_key;
+
     vault::encrypt_vault(&config, &payload.master_password)?;
     vault::save_vault_meta(totp_enabled)?;
 

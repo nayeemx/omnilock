@@ -51,7 +51,10 @@ omnilock/
 │   │   │   ├── AppLockerPage.tsx
 │   │   │   ├── PresetsPage.tsx
 │   │   │   ├── VaultPage.tsx
-│   │   │   └── SecurityPage.tsx
+│   │   │   ├── SecurityPage.tsx
+│   │   │   ├── DiagnosticsPage.tsx   # ACL Recovery scanner UI
+│   │   │   ├── HistoryPage.tsx
+│   │   │   └── SystemMonitorPage.tsx
 │   │   └── shared/
 │   │       ├── Field.tsx
 │   │       ├── Toggle.tsx
@@ -77,8 +80,11 @@ omnilock/
         ├── system_presets.rs     # All 6 presets + installer guard
         ├── installer_guard.rs    # MSI/setup process killer
         ├── panic_hotkey.rs       # Win+Alt+L hotkey via raw FFI
-        ├── file_locker.rs        # icacls DACL locking
-        ├── drive_locker.rs       # DACL + NoDrives registry
+        ├── file_locker.rs        # AES-256-GCM encryption locking + ACL damage scanner/recovery
+        ├── drive_locker.rs       # NoDrives registry + drive-root encryption (design concern)
+        ├── biometric.rs          # Direct WBF fingerprint (WinBio*), DPAPI token
+        ├── shell_context.rs      # Context menu + .omnilock file association
+        ├── process_guard.rs      # App-kill monitor + Explorer folder monitor (widget prompt/relock)
         ├── watchdog.rs           # Self-monitoring (no guard binary)
         ├── models.rs             # All DTOs (VaultConfig, VaultRecoveryData, etc.)
         └── main.rs               # Backup entry point (see lib.rs)
@@ -142,10 +148,12 @@ Create a React component under the appropriate subdirectory in `src/components/`
 ### Step 4 — Wire Up in App.tsx
 Add the import and render the component in the appropriate tab section of the router in `src/App.tsx`.
 
-### Step 5 — Update Documentation
+### Step 5 — Update Documentation (STANDING RULE — always do this)
 - Update `docs/ARCHITECTURE.md` IPC command table with any new commands
 - Add entry to `CHANGELOG.md`
 - Add issue/solution entry to `docs/DEV_LOG.md` if any unexpected issues occurred
+- Update `AGENTS.md` (Current State + "Next Session: Continue from Here") so the next session can resume instantly
+- Update `README.md` feature table if user-facing features changed
 
 ### Step 6 — Verify Everything Works
 ```powershell
@@ -182,8 +190,11 @@ If Rust check fails, read the error — it will tell you the exact file and line
 6. **All commands return Result<_, String>** — errors always contain human-readable messages.
 7. **Error feedback:** Every backend call shows success or error in the UI. No silent catch blocks.
 8. **Controlled components:** Toggles and inputs with backend state are driven by props, not local useState.
-9. **No tokio:** All async uses `std::thread::spawn`. tokio is in Cargo.toml but unused.
+9. **No tokio for app threads:** All background work uses `std::thread::spawn`. tokio is used only for async commands (biometric timeout, GitHub sync, weather).
 10. **No hardcoded values:** Daemon status, stats, versions come from backend/state.
+11. **File locking = encryption (v0.0.35):** `lock_file(path, key)` encrypts in place. Every session-establishing path (`cmd_unlock_session`, `cmd_biometric_login`, `cmd_widget_unlock`) MUST set `AppState.file_key` + `ACTIVE_FILE_KEY` or lock/unlock commands fail with "File encryption key not available".
+12. **Do NOT call `service_client::notify_lock_file/folder/drive` for new locks** — the service's ACL daemon is legacy and re-inflicts owner=SYSTEM damage (persisted and re-applied at boot). Use `notify_force_remove_locked_item` after ACL recovery instead.
+13. **Do NOT delete the WINBIO_* u32 constants in `biometric.rs`** — windows-sys 0.61 does not export them.
 
 ---
 
@@ -191,15 +202,16 @@ If Rust check fails, read the error — it will tell you the exact file and line
 1. Do not put all code in App.tsx.
 2. Do not modify `tauri-bridge.ts` exports without checking `App.tsx` imports.
 3. Do not use `SHA-256(password)` for vault encryption — use `vault::hash_password()`.
-4. Do not add commands to `lib.rs` without also updating `tauri-bridge.ts` AND `App.tsx`.
+4. Do not add commands to `lib.rs` without also updating `tauri-bridge.ts` AND the calling page component.
 5. Do not hardcode daemon status, stats, version strings, or feature flags.
 6. Do not use `verifyTotp` or `SessionToken` from `tauri-bridge.ts` — dead exports.
 7. Do not touch `EncryptedVault` struct without updating `migrate_vault_if_needed()`.
-8. Do not use `tokio` in Rust backend — it's declared but unused.
-9. Do not remove `windows-sys` features needed by existing commands.
+8. Do not reintroduce ACL-based locking for files/folders (destroyed user access — see DEV_LOG).
+9. Do not remove `windows-sys` features needed by existing commands, or the WINBIO_* constants in biometric.rs.
 10. Do not store recovery data inside vault file — it must be in `vault.recovery`.
 11. Do not use empty `catch {}` blocks — every call must show feedback to the user.
 12. Do not name local state variables the same as imported bridge functions.
+13. Do not end a session without updating the `.md` files (AGENTS.md / CHANGELOG.md / DEV_LOG.md).
 
 ---
 

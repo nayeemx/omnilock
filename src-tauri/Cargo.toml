@@ -1,6 +1,6 @@
 [package]
 name = "omnilock"
-version = "0.0.34"
+version = "0.0.35"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"
 description = "OmniLock - Windows 11 App, Folder & File Locker by InnologyBD"
@@ -43,7 +43,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_Security_Cryptography",
     "Win32_Storage_FileSystem",
     "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_Shell"
+    "Win32_UI_Shell",
+    "Win32_Devices_BiometricFramework"
 ] }
 windows = { version = "0.61", features = [
     "Win32_UI_Shell",
@@ -51,6 +52,7 @@ windows = { version = "0.61", features = [
     "Win32_System_Ole",
     "Win32_System_Variant",
     "Win32_Foundation",
+    "Win32_Devices_BiometricFramework",
     "Storage_Provider",
     "Storage_Streams",
     "Storage_Search",

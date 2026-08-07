@@ -73,8 +73,12 @@ pub fn relock_all_unlocked_folders() {
         .map(|g| g.iter().map(|u| u.path.clone()).collect())
         .unwrap_or_default();
 
+    let key = crate::get_active_file_key();
+
     for path in &paths {
-        let _ = crate::file_locker::lock_folder(path);
+        if let Some(ref k) = key {
+            let _ = crate::file_locker::lock_folder(path, k);
+        }
     }
 
     if let Ok(mut guard) = UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
@@ -352,7 +356,9 @@ pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
                 for i in to_relock.into_iter().rev() {
                     let uf = unlocked_guard.remove(i);
                     clear_prompted_folder(&uf.path);
-                    let _ = crate::file_locker::lock_folder(&uf.path);
+                    if let Some(ref k) = crate::get_active_file_key() {
+                        let _ = crate::file_locker::lock_folder(&uf.path, k);
+                    }
                 }
             }
 

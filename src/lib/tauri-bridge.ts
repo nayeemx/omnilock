@@ -473,3 +473,11 @@ export interface HistoryEntry {
 export async function getLockHistory(maxEntries?: number): Promise<HistoryEntry[]> {
   return invoke("cmd_get_lock_history", { maxEntries: maxEntries ?? null });
 }
+
+export async function scanAclDamage(path: string): Promise<string[]> {
+  return invoke("cmd_scan_acl_damage", { path });
+}
+
+export async function bulkRecoverAcl(paths: string[]): Promise<[string, string][]> {
+  return invoke("cmd_bulk_recover_acl", { paths });
+}

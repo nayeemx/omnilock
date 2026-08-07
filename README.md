@@ -21,7 +21,7 @@ npx tauri build
 ## Architecture
 
 - **Frontend:** React 18 / TypeScript / Tailwind CSS (dark glassmorphism, oklch tokens)
-- **Backend:** Rust (Tauri v2) — 13 modules: auth, vault, totp, process_guard, system_presets, installer_guard, panic_hotkey, file_locker, drive_locker, watchdog, models
+- **Backend:** Rust (Tauri v2) — modules: auth, vault, totp, process_guard, system_presets, installer_guard, panic_hotkey, biometric (direct WBF), file_locker (AES-256-GCM), drive_locker, watchdog, models
 - **Vault:** `%APPDATA%\InnologyBD\OmniLock\` (survives reinstalls)
 - **Target:** Windows 10/11 x64, requires admin (UAC manifest)
 
@@ -34,8 +34,13 @@ npx tauri build
 | Application process lock (SHA-256 hash verified) | ✅ |
 | System preset lockdown (all 6 presets) | ✅ |
 | Installer guard (blocks MSI/setup executables) | ✅ |
-| File & folder locking via Windows DACL (icacls) | ✅ |
-| Drive locking (DACL + NoDrives registry) | ✅ |
+| File & folder locking via AES-256-GCM encryption (`.omnilock`) | ✅ v0.0.35 |
+| ACL Recovery (repair files damaged by the old DACL lock) | ✅ v0.0.35 |
+| Drive locking (NoDrives + encryption; design concern — see AGENTS.md) | ⚠️ |
+| Fingerprint login via direct Windows Biometric Framework (no Windows Hello) | ✅ v0.0.35 |
+| Widget temp-unlock + auto re-lock on close | ✅ v0.0.35 |
+| `.omnilock` double-click → unlock widget | ✅ v0.0.35 |
+| Signed GitHub Releases via tag push (CI) | ✅ v0.0.35 |
 | TOTP 2FA (RFC 6238, base32, QR setup) | ✅ |
 | Panic hotkey (Win+Alt+L) | ✅ |
 | Auto-lock timer | ✅ |

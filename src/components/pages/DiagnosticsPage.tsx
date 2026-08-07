@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { ShieldAlert, Fingerprint, HardDrive, FileLock2, Bug, RefreshCw, CheckCircle2, XCircle, AlertTriangle, Cog, Activity, RefreshCcw, ShieldCheck, Menu } from "lucide-react";
-import { getDiagnostics, recoverAcl, installContextMenu, uninstallContextMenu, isContextMenuInstalled, type DiagnosticsDto } from "../../lib/tauri-bridge";
+import { ShieldAlert, Fingerprint, HardDrive, FileLock2, Bug, RefreshCw, CheckCircle2, XCircle, AlertTriangle, Cog, Activity, RefreshCcw, ShieldCheck, Menu, Search, Wrench } from "lucide-react";
+import { getDiagnostics, recoverAcl, installContextMenu, uninstallContextMenu, isContextMenuInstalled, scanAclDamage, bulkRecoverAcl, type DiagnosticsDto } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 
 export function DiagnosticsPage() {
@@ -125,14 +125,15 @@ export function DiagnosticsPage() {
           <div className="glass rounded-2xl overflow-hidden">
             <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
               <ShieldCheck className="w-5 h-5 text-[color:var(--warning)]" />
-              <h3 className="font-semibold">Recover ACL</h3>
-              <span className="text-xs text-[color:var(--muted-foreground)]">Fix corrupted permissions on files/folders damaged by old DENY Everyone locks</span>
+              <h3 className="font-semibold">ACL Recovery</h3>
+              <span className="text-xs text-[color:var(--muted-foreground)]">Scan and repair files damaged by the old lock mechanism</span>
             </div>
             <div className="p-5 space-y-3">
               <p className="text-xs text-[color:var(--muted-foreground)]">
-                This utility force-replaces the ACL on any file or folder with known-good permissions (current user + Administrators + SYSTEM full access). Use it if a locked item became inaccessible even to Administrators.
+                The old lock applied SYSTEM ownership to files and folders, making them inaccessible.
+                Scan any path to find affected items, then fix them all at once.
               </p>
-              <RecoverAclForm />
+              <AclScannerForm />
             </div>
           </div>
         </>
@@ -206,6 +207,138 @@ function ContextMenuSection() {
         </div>
         {msg && <div className="text-xs text-[color:var(--muted-foreground)]">{msg}</div>}
       </div>
+    </div>
+  );
+}
+
+function AclScannerForm() {
+  const [path, setPath] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [damaged, setDamaged] = useState<string[] | null>(null);
+  const [results, setResults] = useState<[string, string][] | null>(null);
+  const [scanError, setScanError] = useState("");
+
+  const handleScan = async () => {
+    if (!path.trim()) return;
+    setScanning(true);
+    setScanError("");
+    setDamaged(null);
+    setResults(null);
+    try {
+      const found = await scanAclDamage(path.trim());
+      setDamaged(found);
+    } catch (e: any) {
+      setScanError(String(e));
+    }
+    setScanning(false);
+  };
+
+  const handleFixAll = async () => {
+    if (!damaged || damaged.length === 0) return;
+    setFixing(true);
+    setResults(null);
+    try {
+      const res = await bulkRecoverAcl(damaged);
+      setResults(res);
+      setDamaged(null);
+    } catch (e: any) {
+      setScanError(String(e));
+    }
+    setFixing(false);
+  };
+
+  const handleFixOne = async (p: string) => {
+    try {
+      const res = await bulkRecoverAcl([p]);
+      // Only remove from the damaged list when the fix actually succeeded,
+      // so failed items stay visible for retry.
+      if (res.length > 0 && res[0][1] === "ok") {
+        setDamaged(prev => prev ? prev.filter(x => x !== p) : []);
+      }
+      setResults(prev => [...(prev ?? []), ...res]);
+    } catch (e: any) {
+      setScanError(String(e));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* path input + scan */}
+      <div className="flex items-center gap-2">
+        <input
+          value={path}
+          onChange={e => setPath(e.target.value)}
+          placeholder="Enter a folder path to scan (e.g. C:\Users\me\Documents)"
+          className="flex-1 px-3 py-2 rounded-lg bg-surface border border-[color:var(--border)] text-sm font-mono outline-none focus:border-[color:var(--primary)]"
+          onKeyDown={e => { if (e.key === "Enter") handleScan(); }}
+        />
+        <button onClick={handleScan} disabled={scanning || !path.trim()}
+                className="px-4 py-2 rounded-lg text-sm border border-[color:var(--border)] flex items-center gap-2 hover:bg-surface disabled:opacity-40 shrink-0">
+          <Search className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} />
+          {scanning ? "Scanning..." : "Scan"}
+        </button>
+      </div>
+
+      {scanError && (
+        <div className="p-3 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-sm text-[color:var(--destructive)]">
+          {scanError}
+        </div>
+      )}
+
+      {/* scan results */}
+      {damaged !== null && (
+        <div className="space-y-3">
+          {damaged.length === 0 ? (
+            <div className="p-3 rounded-lg bg-[color:var(--success)]/15 border border-[color:var(--success)]/30 text-sm text-[color:var(--success)] flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              No damaged items found under this path.
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-[color:var(--warning)] flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {damaged.length} damaged item{damaged.length !== 1 ? "s" : ""} found (owned by SYSTEM)
+                </span>
+                <button onClick={handleFixAll} disabled={fixing}
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
+                        style={{ background: "var(--gradient-brand)" }}>
+                  <Wrench className={`w-4 h-4 ${fixing ? "animate-spin" : ""}`} />
+                  {fixing ? "Fixing..." : `Fix All ${damaged.length} Items`}
+                </button>
+              </div>
+              <div className="rounded-lg border border-[color:var(--border)] divide-y divide-[color:var(--border)] max-h-64 overflow-auto">
+                {damaged.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs">
+                    <XCircle className="w-3.5 h-3.5 shrink-0 text-[color:var(--destructive)]" />
+                    <span className="font-mono flex-1 truncate">{p}</span>
+                    <button onClick={() => handleFixOne(p)}
+                            className="px-2 py-1 rounded text-[10px] border border-[color:var(--border)] hover:bg-surface shrink-0">
+                      Fix
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* fix results */}
+      {results !== null && results.length > 0 && (
+        <div className="rounded-lg border border-[color:var(--border)] divide-y divide-[color:var(--border)] max-h-48 overflow-auto">
+          {results.map(([p, status], i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs">
+              {status === "ok"
+                ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-[color:var(--success)]" />
+                : <XCircle className="w-3.5 h-3.5 shrink-0 text-[color:var(--destructive)]" />}
+              <span className="font-mono flex-1 truncate">{p}</span>
+              <span className={status === "ok" ? "text-[color:var(--success)]" : "text-[color:var(--destructive)] max-w-[160px] truncate"}>{status}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

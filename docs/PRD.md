@@ -6,7 +6,9 @@
 **Developer / Publisher:** InnologyBD (Featured in About dialog & Footer)  
 **Status:** Approved for Architectural Design & Implementation  
 **Target Platform:** Windows 11 (64-bit / ARM64)  
-**Core Technologies:** Rust, Tauri v2, React 18, Windows API (Win32/NT), Windows ACLs, Argon2id, AES-256-GCM, RFC 6238 TOTP  
+**Core Technologies:** Rust, Tauri v2, React 18, Windows API (Win32/NT), Argon2id, AES-256-GCM (vault + file encryption), RFC 6238 TOTP, Windows Biometric Framework (direct fingerprint)  
+
+> **Implementation note (v0.0.35):** file/folder protection is implemented with **AES-256-GCM in-place encryption** (`.omnilock` blobs), NOT Windows NT ACL lockdown — the ACL approach permanently removed the owner's access and was replaced. Windows NT ACLs remain only in the legacy service daemon for backward compatibility; new locks bypass it. See AGENTS.md.
 
 ---
 
@@ -60,8 +62,8 @@ It features:
 | ID | Requirement Description | Priority |
 |:---|:---|:---|
 | **FR-FILE-01** | **Folder & File Selection**: Add files or folders via Drag-and-Drop or Native Dialog. | **P0 (Critical)** |
-| **FR-FILE-02** | **Drive Volume Protection**: Ability to lock entire drive volumes (e.g. `D:\`, `E:\`) via Windows NT DACL security descriptors and Explorer Shell drive policy (`NoDrives`). | **P0 (Critical)** |
-| **FR-FILE-03** | **Windows ACL Lockdown**: Revoke `GENERIC_READ`, `GENERIC_WRITE`, `GENERIC_EXECUTE`, and `DELETE` for `EVERYONE`, `SYSTEM`, and current user. | **P0 (Critical)** |
+| **FR-FILE-02** | **Drive Volume Protection**: Ability to lock entire drive volumes (e.g. `D:\`, `E:\`) via `NoDrives` Explorer policy (+ drive-root encryption — see AGENTS.md design concern). | **P0 (Critical)** |
+| **FR-FILE-03** | **File/Folder Protection**: Encrypt file contents with AES-256-GCM in place (`original` → `original.omnilock`) so they are unreadable without the vault key; folder stays browsable. (Supersedes the old ACL lockdown, which permanently removed owner access.) | **P0 (Critical)** |
 
 ---
 

@@ -38,8 +38,8 @@ OmniLock uses a **single-process Tauri architecture** with a dual-threaded Rust 
                |  │  process_guard.rs ← Enumerate+Stop │  |
                |  │  system_presets.rs    ← All 6      │  |
                |  │  installer_guard.rs   ← Kill MSI   │  |
-               |  │  file_locker.rs      ← icacls ACL  │  |
-               |  │  drive_locker.rs     ← ACL+Reg     │  |
+               |  │  file_locker.rs   ← AES-256-GCM  │  |
+               |  │  drive_locker.rs   ← NoDrives+Enc │  |
                |  │  panic_hotkey.rs     ← Win+Alt+L   │  |
                |  │  watchdog.rs          ← Self-monitor│ │
                |  │  models.rs          ← All DTOs     │  |
@@ -69,6 +69,19 @@ OmniLock uses a **single-process Tauri architecture** with a dual-threaded Rust 
 - **Key derivation:** `Argon2id(password, salt)` where salt is per-vault random, stored in vault header
 - **Header Magic:** `OMNI` (4 bytes)
 - **Version:** `u32` in outer `EncryptedVault` struct, currently `1`
+- **`VaultConfig.file_encryption_key` (v0.0.35):** 32 random bytes used to encrypt locked files/folders. Generated once at vault setup, independent of the master password, auto-migrated for older vaults on login. Held in `AppState.file_key` + global `ACTIVE_FILE_KEY` while a session is active.
+
+### 2.5 File / Folder Encryption Locking (v0.0.35 — replaced ACL locking)
+- **Method:** AES-256-GCM authenticated encryption via the `aes-gcm` crate. No NTFS ACL modification.
+- **Lock file:** reads the file, encrypts with a fresh 96-bit nonce, writes `original.omnilock`, deletes the original.
+- **Blob layout:** `[4] "OLCK" | [1] version=1 | [12] nonce | [4] path_len (u32 LE) | [N] original path (UTF-8) | [*] ciphertext + 16-byte tag`.
+- **Folder lock:** recursive encrypt of every file inside; the folder itself stays browsable (`desktop.ini` and existing `.omnilock` blobs are skipped).
+- **Unlock:** recursive decrypt (blob → original path from the embedded header, blob deleted).
+- **Key flow:** `cmd_unlock_session` / `cmd_biometric_login` / `cmd_widget_unlock` load `file_encryption_key` into `AppState.file_key` + `ACTIVE_FILE_KEY`. All lock/unlock commands require it.
+- **Widget auto-relock:** `cmd_widget_unlock` temporarily lifts the lock without touching the vault; on widget focus-lost the target is re-encrypted via `WIDGET_TEMP_UNLOCKED` + `ACTIVE_FILE_KEY`.
+- **`.omnilock` file association:** `shell_context.rs` registers the extension → `OmniLock.exe --open-locked "%1"`; the setup hook stores the path and the unlock widget appears after login.
+- **Legacy ACL damage:** `scan_acl_damage` (recursive FindFirstFile walk, owner==SYSTEM detection), `bulk_recover_acl`, `force_unlock`, `safe_recover_acl` are kept for files damaged by the pre-0.0.35 lock. Recovery commands also purge the service's persisted re-lock list.
+- **Drive locking (v0.0.35):** `drive_locker.rs` sets the NoDrives registry value only (hide). Whole-drive recursive encryption was removed as a data hazard; `lock_folder` refuses drive roots. True access blocking is an open design question — see AGENTS.md.
 
 ### 2.2 Application Interception
 - Real-time Win32 process enumeration via `sysinfo` crate (`System::new_all()` + `refresh_processes()`)
@@ -117,12 +130,20 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_toggle_system_preset` | `preset_id, enabled` | `Result<(), String>` | Toggle system preset |
 | `cmd_toggle_installer_guard` | `enabled` | `Result<(), String>` | Toggle installer blocking |
 | `cmd_trigger_panic_lock` | None | `Result<(), String>` | Register panic hotkey |
-| `cmd_add_locked_drive` | `drive_letter` | `Result<(), String>` | Lock drive (DACL + NoDrives) |
+| `cmd_add_locked_drive` | `drive_letter` | `Result<(), String>` | Lock drive (NoDrives hide only) |
 | `cmd_remove_locked_drive` | `drive_letter` | `Result<(), String>` | Unlock drive |
-| `cmd_add_locked_file` | `path` | `Result<(), String>` | Lock file (icacls deny Everyone) |
-| `cmd_remove_locked_file` | `path` | `Result<(), String>` | Unlock file |
-| `cmd_add_locked_folder` | `path` | `Result<(), String>` | Lock folder (icacls deny) |
-| `cmd_remove_locked_folder` | `path` | `Result<(), String>` | Unlock folder |
+| `cmd_add_locked_file` | `path` | `Result<String, String>` | Lock file (AES-256-GCM encrypt → `.omnilock`) |
+| `cmd_remove_locked_file` | `path` | `Result<String, String>` | Unlock file (decrypt in place) |
+| `cmd_add_locked_folder` | `path` | `Result<String, String>` | Lock folder (recursive encrypt) |
+| `cmd_remove_locked_folder` | `path` | `Result<String, String>` | Unlock folder (recursive decrypt) |
+| `cmd_scan_acl_damage` | `path` | `Result<Vec<String>, String>` | Find all items owned by SYSTEM (old-format lock damage) |
+| `cmd_bulk_recover_acl` | `paths` | `Vec<(String, String)>` | `force_unlock` each path; purges service re-lock list |
+| `cmd_force_unlock` | `path` | `Result<String, String>` | Take ownership + reset DACL (stubborn files) |
+| `cmd_rescue_unlock` | `path` | `Result<String, String>` | Rescue mode — needs session + file key |
+| `cmd_widget_unlock` | `password` | `Result<(), String>` | Temp-unlock target; auto re-locks on widget close |
+| `cmd_authenticate_biometric` | `message` | `Result<bool, String>` | Direct WBF fingerprint scan (no Windows Hello) |
+| `cmd_check_biometric` | None | `BiometricStatus` | Sensor availability via `WinBioEnumBiometricUnits` |
+| `cmd_install_context_menu` / `cmd_uninstall_context_menu` | None | `Result<String, String>` | Context menu + `.omnilock` association |
 | `cmd_toggle_locked_app` | `name, enabled` | `Result<(), String>` | Toggle app in config |
 | `cmd_add_locked_app` | `name, path, sha256` | `Result<(), String>` | Add app to lock list |
 | `cmd_remove_locked_app` | `name` | `Result<(), String>` | Remove app from lock list |
@@ -209,6 +230,7 @@ MSI/NSIS installers only overwrite files in the installation directory (Program 
 2. **Vault encryption key:** Argon2id(password, config password_salt) → 32 bytes → AES-256-GCM key
 3. **Recovery data key:** SHA-256(security_answer_lowercased_trimmed) → AES-GCM key
 4. **Nonce:** Random 96-bit, per encryption, stored in vault header
+5. **File/folder lock key (v0.0.35):** `VaultConfig.file_encryption_key` — 32 random bytes, stored inside the encrypted vault, never rotated on password change. Locked files are AES-256-GCM encrypted with a fresh 96-bit nonce per file. If the vault is lost, locked files are unrecoverable (backup the vault or export config).
 
 ### Attack Surface Mitigations
 | Attack | Mitigation |

@@ -35,15 +35,19 @@
 
 ## 2. System Protection
 
-### File/Folder Locking
-- **Method:** Windows NT DACL via `icacls.exe`
-- **ACE:** `Everyone:(OI)(CI)F` denied (no read/write/execute/delete)
-- **Recursion:** `/T` flag applies to subdirectories at the ACL level
+### File/Folder Locking (v0.0.35 — AES-256-GCM encryption, replaced ACL)
+- **Method:** Authenticated encryption in place (AES-256-GCM, `aes-gcm` crate). No NTFS ACL modification.
+- **Key:** `VaultConfig.file_encryption_key` — 32 random bytes inside the encrypted vault, never rotated on password change.
+- **Lock:** `original` → `original.omnilock` (`OLCK` magic + version + 96-bit nonce + original path + ciphertext + 16-byte tag), original deleted.
+- **Folder:** recursive encrypt; the folder stays browsable.
+- **Unlock:** decrypt via the embedded original path; blob deleted.
+- **Security property:** contents are unreadable without the vault key. If the vault is lost, locked files are unrecoverable — keep a vault backup.
+- **Legacy ACL damage:** `scan_acl_damage` / `bulk_recover_acl` / `force_unlock` repair files broken by the pre-0.0.35 ACL lock (owner=SYSTEM). They also purge the service's persisted re-lock list.
 
 ### Drive Locking
-- **DACL:** Same as file/folder locking on drive root
-- **Visibility:** `NoDrives` registry value hides drive in Windows Explorer
-- **Bitmask:** Standard Windows drive bitmask (bit 0 = A:, bit 1 = B:, etc.)
+- **Visibility:** `NoDrives` registry value hides drive in Windows Explorer (bitmask: bit 0 = A:, bit 1 = B:, …)
+- **Lock (v0.0.35):** NoDrives hide only. Whole-drive recursive encryption was removed as a data hazard; direct path access still works — see AGENTS.md for the open design question.
+- **Legacy:** pre-0.0.35 used DACL on the drive root (owner=SYSTEM) — destructive; no longer sent to the service
 
 ### System Presets
 | Preset | Registry Key | Value |
@@ -85,6 +89,8 @@
 | Vault | `%APPDATA%\InnologyBD\OmniLock\vault.enc` | Yes (AES-256-GCM) |
 | Recovery | `%APPDATA%\InnologyBD\OmniLock\vault.recovery` | Yes (AES-256-GCM) |
 | Meta | `%APPDATA%\InnologyBD\OmniLock\vault.meta` | No (plaintext) |
+| Locked item | `path.omnilock` next to original | Yes (AES-256-GCM, `OLCK` blob) |
+| Locked items index | `%APPDATA%\InnologyBD\OmniLock\locked_items.json` | No (paths + display names only) |
 
 ---
 

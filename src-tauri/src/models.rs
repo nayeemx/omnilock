@@ -140,6 +140,10 @@ pub struct VaultConfig {
     pub cloud_sync_enabled: bool,
     #[serde(default)]
     pub biometric_enabled: bool,
+    /// 32-byte random key used to AES-256-GCM encrypt locked files.
+    /// Generated once at vault creation, never rotated when password changes.
+    #[serde(default)]
+    pub file_encryption_key: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,6 +199,7 @@ impl Default for VaultConfig {
             github_user_id: 0,
             cloud_sync_enabled: false,
             biometric_enabled: false,
+            file_encryption_key: Vec::new(),
         }
     }
 }

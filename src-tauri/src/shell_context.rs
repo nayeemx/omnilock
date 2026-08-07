@@ -17,9 +17,51 @@ pub fn install() -> Result<(), String> {
     install_for("*", &exe_str)?;
     install_for("Directory", &exe_str)?;
     install_for("Drive", &exe_str)?;
+    register_omnilock_extension(&exe_str)?;
 
     CONTEXT_MENU_INSTALLED.store(true, Ordering::SeqCst);
     logger::log("MENU", &format!("Context menu installed for: {}", exe_str));
+    Ok(())
+}
+
+/// Register only the `.omnilock` file association (no context-menu entries).
+/// Called automatically at app startup so double-clicking a locked file opens
+/// the unlock widget. Idempotent — safe to call on every launch.
+pub fn register_extension_only() -> Result<(), String> {
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Cannot get exe path: {}", e))?;
+    let exe_str = exe_path.to_string_lossy().to_string();
+    register_omnilock_extension(&exe_str)
+}
+
+/// Register the .omnilock file extension so double-clicking an encrypted file
+/// opens OmniLock with --open-locked <path>, which shows the unlock widget.
+fn register_omnilock_extension(exe_path: &str) -> Result<(), String> {
+    // .omnilock → OmniLockFile
+    let _ = std::process::Command::new("reg")
+        .args(["add", r"HKEY_CLASSES_ROOT\.omnilock", "/ve", "/d", "OmniLockFile", "/f"])
+        .output();
+
+    // ProgID description
+    let _ = std::process::Command::new("reg")
+        .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile", "/ve", "/d", "OmniLock Encrypted File", "/f"])
+        .output();
+
+    // Icon
+    let _ = std::process::Command::new("reg")
+        .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile\DefaultIcon", "/ve", "/d", exe_path, "/f"])
+        .output();
+
+    // Open command → OmniLock.exe --open-locked "%1"
+    let open_cmd = format!("\"{}\" --open-locked \"%1\"", exe_path);
+    let _ = std::process::Command::new("reg")
+        .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile\shell\open\command", "/ve", "/d", &open_cmd, "/f"])
+        .output();
+
+    // Notify shell
+    let _ = std::process::Command::new("ie4uinit.exe").args(["-show"]).output();
+
+    logger::log("MENU", "Registered .omnilock file extension");
     Ok(())
 }
 
