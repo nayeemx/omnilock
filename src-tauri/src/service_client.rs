@@ -64,6 +64,13 @@ pub fn is_service_running() -> bool {
     }
 }
 
+pub fn get_locked_items() -> Vec<LockedItem> {
+    match pipe_request(&SvcRequest::GetLockedItems) {
+        Some(SvcResponse::LockedItems(items)) => items,
+        _ => Vec::new(),
+    }
+}
+
 pub fn notify_lock_file(path: &str) {
     let display_name = std::path::Path::new(path)
         .file_name()

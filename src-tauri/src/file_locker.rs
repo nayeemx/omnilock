@@ -48,7 +48,7 @@ pub fn is_file_locked(path: &str) -> bool {
 
 // ── encryption helpers ────────────────────────────────────────────────────────
 
-fn do_encrypt(data: &[u8], key_material: &[u8]) -> Result<(Vec<u8>, [u8; 12]), String> {
+pub fn do_encrypt(data: &[u8], key_material: &[u8]) -> Result<(Vec<u8>, [u8; 12]), String> {
     if key_material.len() != 32 {
         return Err("Invalid file encryption key length (expected 32 bytes)".to_string());
     }
@@ -61,7 +61,7 @@ fn do_encrypt(data: &[u8], key_material: &[u8]) -> Result<(Vec<u8>, [u8; 12]), S
     Ok((ct, nonce_bytes))
 }
 
-fn do_decrypt(ciphertext: &[u8], key_material: &[u8], nonce_bytes: &[u8]) -> Result<Vec<u8>, String> {
+pub fn do_decrypt(ciphertext: &[u8], key_material: &[u8], nonce_bytes: &[u8]) -> Result<Vec<u8>, String> {
     if key_material.len() != 32 {
         return Err("Invalid file encryption key length (expected 32 bytes)".to_string());
     }
@@ -337,7 +337,7 @@ pub fn restore_backup(backup_path: &str, target_path: &str) -> Result<(), String
 /// Refuse to lock paths that would be catastrophic (drive roots, the vault
 /// directory — which contains the key that unlocks everything — and the app's
 /// own executable).
-fn check_protected_path(path: &str) -> Result<(), String> {
+pub fn check_protected_path(path: &str) -> Result<(), String> {
     let trimmed = path.trim_end_matches(['\\', '/']);
     // Drive root like "D:" or "D:"
     if trimmed.len() == 2 && trimmed.as_bytes()[1] == b':' {

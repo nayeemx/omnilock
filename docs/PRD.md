@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## Product Requirements Document (PRD)
 
-**Document Version:** 1.3.0  
+**Document Version:** 1.4.0  
 **Product Name:** OmniLock  
 **Developer / Publisher:** InnologyBD (Featured in About dialog & Footer)  
 **Status:** Approved for Architectural Design & Implementation  
@@ -64,6 +64,8 @@ It features:
 | **FR-FILE-01** | **Folder & File Selection**: Add files or folders via Drag-and-Drop or Native Dialog. | **P0 (Critical)** |
 | **FR-FILE-02** | **Drive Volume Protection**: Ability to lock entire drive volumes (e.g. `D:\`, `E:\`) via `NoDrives` Explorer policy (+ drive-root encryption — see AGENTS.md design concern). | **P0 (Critical)** |
 | **FR-FILE-03** | **File/Folder Protection**: Encrypt file contents with AES-256-GCM in place (`original` → `original.omnilock`) so they are unreadable without the vault key; folder stays browsable. (Supersedes the old ACL lockdown, which permanently removed owner access.) | **P0 (Critical)** |
+| **FR-FILE-04** | **Vault Storage (v0.0.36)**: Store arbitrary user files privately inside the vault — files are encrypted with the vault's file key and kept under `%APPDATA%\InnologyBD\OmniLock\storage\` under random names; the manifest is encrypted too, so stored names never leak. Add / Extract / Delete from the Vault page. | **P1 (High)** |
+| **FR-FILE-05** | **Stale-Unlock Reconciliation (v0.0.36)**: After restart + login, detect items still listed as locked but no longer encrypted on disk (temp-unlock that was never re-locked) and let the user **Re-lock all** or **Keep unlocked**. | **P1 (High)** |
 
 ---
 
@@ -79,4 +81,4 @@ It features:
   4. **Security & 2FA Settings**: TOTP QR code manager, 3-Tier Recovery Key viewer, Panic Hotkey customizer, Auto-lock timer.
 
 ---
-*End of PRD.md (OmniLock v1.2.0)*
+*End of PRD.md (OmniLock v1.4.0)*

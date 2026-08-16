@@ -1,6 +1,6 @@
 # OmniLock - Security Specification
 
-**Document Version:** 2.1.0
+**Document Version:** 2.2.0
 
 ---
 
@@ -43,6 +43,15 @@
 - **Unlock:** decrypt via the embedded original path; blob deleted.
 - **Security property:** contents are unreadable without the vault key. If the vault is lost, locked files are unrecoverable — keep a vault backup.
 - **Legacy ACL damage:** `scan_acl_damage` / `bulk_recover_acl` / `force_unlock` repair files broken by the pre-0.0.35 ACL lock (owner=SYSTEM). They also purge the service's persisted re-lock list.
+- **Boot sweep (v0.0.36):** on app startup the service's persisted legacy ACL `locked_items` are purged (`get_locked_items()` + `notify_force_remove_locked_item`), so the legacy daemon can never re-apply owner=SYSTEM locks at boot.
+- **Stale-unlock reconciliation (v0.0.36):** after login `cmd_verify_locked_state` compares the vault's `locked_files`/`locked_folders` against disk; entries with no `.omnilock` blob (temp-unlocked, app exited before re-lock) are surfaced for the user to **re-lock** (`cmd_relock_entries`) or **keep unlocked** (`cmd_forget_unlocked_entries`). No silent re-encryption — folders in active use are never re-encrypted without consent.
+
+### Vault Storage (v0.0.36)
+- **Purpose:** private encrypted storage of user files (`%APPDATA%\InnologyBD\OmniLock\storage\<id>.vaultfile`).
+- **Blob format:** `OVLF` magic | version 1 | 96-bit nonce | name_len (u32 LE) | original name (UTF-8) | size (u64 LE) | AES-256-GCM ciphertext + 16-byte tag. Key = the vault's `file_encryption_key`.
+- **Manifest:** `vault_files.enc` — AES-256-GCM encrypted (`OVMF` magic + nonce + ciphertext JSON `[{id,name,size,added_at}]`) so **stored file names never leak on disk**.
+- **Guarantees:** original file deleted only after the blob is written; extraction refuses to overwrite existing files and verifies size; blob + manifest entry removed only after a successful extraction write; symlinks and protected paths refused.
+- **Recovery trade-off:** if the vault is lost, stored files are unrecoverable — same as locked files. Keep a vault backup.
 
 ### Drive Locking
 - **Visibility:** `NoDrives` registry value hides drive in Windows Explorer (bitmask: bit 0 = A:, bit 1 = B:, …)
@@ -91,7 +100,9 @@
 | Meta | `%APPDATA%\InnologyBD\OmniLock\vault.meta` | No (plaintext) |
 | Locked item | `path.omnilock` next to original | Yes (AES-256-GCM, `OLCK` blob) |
 | Locked items index | `%APPDATA%\InnologyBD\OmniLock\locked_items.json` | No (paths + display names only) |
+| Vault storage blobs | `%APPDATA%\InnologyBD\OmniLock\storage\*.vaultfile` | Yes (AES-256-GCM, `OVLF` blob) |
+| Vault storage manifest | `%APPDATA%\InnologyBD\OmniLock\vault_files.enc` | Yes (AES-256-GCM, `OVMF`) |
 
 ---
 
-*End of SECURITY.md (OmniLock v2.0.0)*
+*End of SECURITY.md (OmniLock v2.2.0)*

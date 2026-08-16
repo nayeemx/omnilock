@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Github, ArrowRight, Loader2 } from "lucide-react";
+import { Github, ArrowRight, Loader2, ShieldAlert } from "lucide-react";
 import {
   getVaultStatus, getVaultConfig, lockNow,
   githubGetStatus, githubStartDeviceFlow, githubPollToken, openExternalUrl,
   hasBiometricToken,
-  type VaultStatusDto, type VaultConfigDto, type GitHubSyncStatusDto,
+  verifyLockedState, relockEntries, forgetUnlockedEntries,
+  type VaultStatusDto, type VaultConfigDto, type GitHubSyncStatusDto, type UnlockTarget,
 } from "./lib/tauri-bridge";
 import { SetupWizard } from "./components/auth/SetupWizard";
 import { LoginScreen } from "./components/auth/LoginScreen";
@@ -39,6 +40,8 @@ export default function App() {
   const [githubError, setGithubError] = useState("");
   const [showSkipGithub, setShowSkipGithub] = useState(false);
   const [hasBiometric, setHasBiometric] = useState(false);
+  const [staleIssues, setStaleIssues] = useState<UnlockTarget[] | null>(null);
+  const [resolvingStale, setResolvingStale] = useState(false);
 
   useEffect(() => {
     if (!widgetMode) {
@@ -64,11 +67,53 @@ export default function App() {
       if (status.initialized) {
         await refreshConfig();
         setIsUnlocked(true);
+        // Entries may be marked locked in the vault but no longer locked on disk
+        // (widget temp-unlock that was never re-locked, e.g. app closed while the
+        // item was open). Prompt the user to re-lock or keep them unlocked.
+        try {
+          const issues = await verifyLockedState();
+          if (issues.length > 0) {
+            setStaleIssues(issues);
+          }
+        } catch {
+          // verification is best-effort
+        }
       }
     } catch (e: any) {
       console.error(e);
     }
   }, [refreshConfig]);
+
+  const handleRelockAll = async () => {
+    if (!staleIssues) return;
+    setResolvingStale(true);
+    try {
+      const results = await relockEntries(staleIssues.map(i => i.target_id));
+      const failed = results.filter(([, s]) => s !== "ok" && s !== "already_locked");
+      if (failed.length > 0) {
+        setStaleIssues(staleIssues.filter(i => failed.some(([p]) => p === i.target_id)));
+      } else {
+        setStaleIssues(null);
+      }
+      await refreshConfig();
+    } catch (e: any) {
+      console.error("relock failed:", e);
+    }
+    setResolvingStale(false);
+  };
+
+  const handleKeepUnlocked = async () => {
+    if (!staleIssues) return;
+    setResolvingStale(true);
+    try {
+      await forgetUnlockedEntries(staleIssues.map(i => i.target_id));
+      setStaleIssues(null);
+      await refreshConfig();
+    } catch (e: any) {
+      console.error("forget failed:", e);
+    }
+    setResolvingStale(false);
+  };
 
   const handleLockNow = useCallback(async () => {
     try {
@@ -207,6 +252,60 @@ export default function App() {
 
   if (!isUnlocked) {
     return <LoginScreen totpEnabled={vaultStatus.totp_enabled} biometricEnabled={hasBiometric} onUnlock={handleUnlock} />;
+  }
+
+  if (staleIssues && staleIssues.length > 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
+        <div className="w-full max-w-md">
+          <div className="flex items-center gap-3 mb-6">
+            <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
+            <div>
+              <div className="text-lg font-semibold tracking-tight">OmniLock</div>
+              <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
+            </div>
+          </div>
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg grid place-items-center bg-[color:var(--warning)]/15 border border-[color:var(--warning)]/30">
+                <ShieldAlert className="w-5 h-5 text-[color:var(--warning)]" />
+              </div>
+              <div>
+                <h2 className="font-semibold tracking-tight">Unlocked items detected</h2>
+                <p className="text-xs text-[color:var(--muted-foreground)] mt-0.5">
+                  {staleIssues.length} item{staleIssues.length > 1 ? "s" : ""} marked locked in the vault but not locked on disk.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              These were temporarily unlocked and never re-locked (the app was closed while they were open).
+              Re-lock them now, or keep them unlocked and remove them from the vault.
+            </p>
+            <div className="max-h-40 overflow-auto rounded-lg bg-surface border border-surface-border divide-y divide-surface-border">
+              {staleIssues.map(i => (
+                <div key={i.target_type + i.target_id} className="px-3 py-2 text-xs flex items-center gap-2">
+                  <span className="uppercase text-[9px] px-1.5 py-0.5 rounded bg-surface-active text-[color:var(--muted-foreground)]">{i.target_type}</span>
+                  <code className="truncate">{i.target_id}</code>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={handleRelockAll} disabled={resolvingStale}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] glow-cyan disabled:opacity-40"
+                      style={{ background: "var(--gradient-brand)" }}>
+                {resolvingStale ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Re-lock all
+              </button>
+              <button onClick={handleKeepUnlocked} disabled={resolvingStale}
+                      className="flex-1 px-4 py-2.5 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active disabled:opacity-40">
+                Keep unlocked
+              </button>
+            </div>
+            {resolvingStale && <div className="text-xs text-[color:var(--muted-foreground)]">Applying...</div>}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

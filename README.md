@@ -21,7 +21,7 @@ npx tauri build
 ## Architecture
 
 - **Frontend:** React 18 / TypeScript / Tailwind CSS (dark glassmorphism, oklch tokens)
-- **Backend:** Rust (Tauri v2) — modules: auth, vault, totp, process_guard, system_presets, installer_guard, panic_hotkey, biometric (direct WBF), file_locker (AES-256-GCM), drive_locker, watchdog, models
+- **Backend:** Rust (Tauri v2) — modules: auth, vault, totp, process_guard, system_presets, installer_guard, panic_hotkey, biometric (Windows Hello fingerprint prompt + DPAPI token), file_locker (AES-256-GCM), vault_storage (encrypted file storage), drive_locker, watchdog, models
 - **Vault:** `%APPDATA%\InnologyBD\OmniLock\` (survives reinstalls)
 - **Target:** Windows 10/11 x64, requires admin (UAC manifest)
 
@@ -35,6 +35,11 @@ npx tauri build
 | System preset lockdown (all 6 presets) | ✅ |
 | Installer guard (blocks MSI/setup executables) | ✅ |
 | File & folder locking via AES-256-GCM encryption (`.omnilock`) | ✅ v0.0.35 |
+| Vault Storage — encrypted private file storage (add/extract/delete) | ✅ v0.0.36 |
+| Stale-unlock prompt after restart (re-lock all / keep unlocked) | ✅ v0.0.36 |
+| Legacy service ACL state purged at boot | ✅ v0.0.36 |
+| Biometric login parity (auto-lock + USB-removal wiring) | ✅ v0.0.36 |
+| Biometric availability checks enrolled fingerprints | ✅ v0.0.36 |
 | ACL Recovery (repair files damaged by the old DACL lock) | ✅ v0.0.35 |
 | Drive locking (NoDrives + encryption; design concern — see AGENTS.md) | ⚠️ |
 | Fingerprint login via direct Windows Biometric Framework (no Windows Hello) | ✅ v0.0.35 |

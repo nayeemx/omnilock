@@ -11,6 +11,7 @@ pub mod panic_hotkey;
 pub mod biometric;
 pub mod file_locker;
 pub mod drive_locker;
+pub mod vault_storage;
 pub mod watchdog;
 pub mod auto_lock;
 pub mod usb_key;
@@ -576,6 +577,114 @@ fn cmd_force_unlock(path: String) -> Result<String, String> {
     }
 }
 
+/// Items marked locked in the vault but no longer locked on disk.
+/// This happens when a widget temp-unlock was not re-locked (e.g. the app
+/// exited while the item was open). The frontend prompts the user to either
+/// re-lock these entries or remove them from the vault.
+#[tauri::command]
+fn cmd_verify_locked_state(state: State<'_, AppState>) -> Result<Vec<UnlockTarget>, String> {
+    require_valid_session(&state)?;
+    let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_ref().ok_or("Session not unlocked")?;
+
+    let mut issues: Vec<UnlockTarget> = Vec::new();
+    for path in &config.locked_files {
+        if !file_locker::is_file_locked(path) {
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            issues.push(UnlockTarget {
+                target_type: "file".to_string(),
+                target_id: path.clone(),
+                display_name: name,
+            });
+        }
+    }
+    for path in &config.locked_folders {
+        if !file_locker::is_folder_locked(path) {
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            issues.push(UnlockTarget {
+                target_type: "folder".to_string(),
+                target_id: path.clone(),
+                display_name: name,
+            });
+        }
+    }
+    logger::log("VERIFY", &format!("verify_locked_state: {} stale entries", issues.len()));
+    Ok(issues)
+}
+
+/// Re-encrypt entries the user chose to re-lock after a stale-unlock prompt.
+/// Returns (path, status) per entry.
+#[tauri::command]
+fn cmd_relock_entries(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<(String, String)>, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    let mut results: Vec<(String, String)> = Vec::new();
+    for path in &paths {
+        let status = if file_locker::is_file_locked(path) || file_locker::is_folder_locked(path) {
+            "already_locked".to_string()
+        } else if std::path::Path::new(path).is_dir() {
+            match file_locker::lock_folder(path, &key) {
+                Ok(_) => "ok".to_string(),
+                Err(e) => e,
+            }
+        } else {
+            match file_locker::lock_file(path, &key) {
+                Ok(_) => "ok".to_string(),
+                Err(e) => e,
+            }
+        };
+        results.push((path.clone(), status));
+    }
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+    for (path, status) in &results {
+        if status == "ok" || status == "already_locked" {
+            if std::path::Path::new(path).is_dir() && !config.locked_folders.contains(path) {
+                config.locked_folders.push(path.clone());
+            } else if !config.locked_files.contains(path) {
+                config.locked_files.push(path.clone());
+            }
+        }
+    }
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    process_guard::update_locked_folders(config.locked_folders.clone());
+    save_locked_items_summary(config);
+    Ok(results)
+}
+
+/// Remove entries from the vault (keep them unlocked) after a stale-unlock prompt.
+#[tauri::command]
+fn cmd_forget_unlocked_entries(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    require_valid_session(&state)?;
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+    for path in &paths {
+        config.locked_files.retain(|f| f != path);
+        config.locked_folders.retain(|f| f != path);
+        process_guard::notify_folder_locked(path);
+    }
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    process_guard::update_locked_folders(config.locked_folders.clone());
+    save_locked_items_summary(config);
+    Ok(())
+}
+
 #[tauri::command]
 fn cmd_list_backups(path: String) -> Result<Vec<(String, u64)>, String> {
     file_locker::list_backups(&path)
@@ -726,6 +835,56 @@ fn cmd_disable_2fa(
 #[tauri::command]
 fn cmd_list_drives() -> Vec<String> {
     drive_locker::list_available_drives()
+}
+
+#[tauri::command]
+fn cmd_vault_store_file(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<vault_storage::VaultFileInfo, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    logger::log("VAULT_STORE", &format!("store_file start: {path}"));
+    let info = match vault_storage::store_file(&path, &key) {
+        Ok(i) => { logger::log("VAULT_STORE", &format!("store_file ok: {} -> {}", path, i.name)); i }
+        Err(e) => { logger::log("VAULT_STORE", &format!("store_file failed: {} err={}", path, e)); return Err(e); }
+    };
+    Ok(info)
+}
+
+#[tauri::command]
+fn cmd_vault_list_files(
+    state: State<'_, AppState>,
+) -> Result<Vec<vault_storage::VaultFileInfo>, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    vault_storage::list_files(&key)
+}
+
+#[tauri::command]
+fn cmd_vault_extract_file(
+    state: State<'_, AppState>,
+    id: String,
+    dest_dir: String,
+) -> Result<String, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    logger::log("VAULT_STORE", &format!("extract_file start: {id} -> {dest_dir}"));
+    let dest = match vault_storage::extract_file(&id, &dest_dir, &key) {
+        Ok(d) => { logger::log("VAULT_STORE", &format!("extract_file ok: {id} -> {d}")); d }
+        Err(e) => { logger::log("VAULT_STORE", &format!("extract_file failed: {id} err={}", e)); return Err(e); }
+    };
+    Ok(dest)
+}
+
+#[tauri::command]
+fn cmd_vault_delete_file(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    vault_storage::delete_file(&id, &key)
 }
 
 #[tauri::command]
@@ -1339,6 +1498,7 @@ async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) 
         *fk = Some(file_key.clone());
     }
     set_active_file_key(file_key);
+    auto_lock::set_auto_lock_minutes(config.auto_lock_minutes);
     process_guard::update_locked_apps(config.locked_apps.clone());
     process_guard::update_locked_folders(config.locked_folders.clone());
     process_guard::start_process_monitor(app.clone());
@@ -1348,6 +1508,11 @@ async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) 
     }));
     auto_lock::start_auto_lock_monitor();
     drive_locker::set_monitored_locked_drives(config.locked_drives.clone());
+    drive_locker::set_usb_removal_callback(std::sync::Arc::new(|| {
+        let _ = crate::hidden_cmd("cmd")
+            .args(["/C", "rundll32.exe user32.dll,LockWorkStation"])
+            .spawn();
+    }));
     drive_locker::start_usb_removal_monitor();
     logger::log("BIOMETRIC", "biometric_login ok");
     Ok(())
@@ -1496,6 +1661,9 @@ pub fn run() {
             cmd_rescue_unlock,
             cmd_recover_acl,
             cmd_force_unlock,
+            cmd_verify_locked_state,
+            cmd_relock_entries,
+            cmd_forget_unlocked_entries,
             cmd_list_backups,
             cmd_restore_backup,
             cmd_generate_totp,
@@ -1503,6 +1671,10 @@ pub fn run() {
             cmd_enable_2fa,
             cmd_disable_2fa,
             cmd_list_drives,
+            cmd_vault_store_file,
+            cmd_vault_list_files,
+            cmd_vault_extract_file,
+            cmd_vault_delete_file,
             cmd_list_processes,
             cmd_list_installed_apps,
             cmd_set_auto_lock,
@@ -1652,6 +1824,19 @@ pub fn run() {
                 }
             } else {
                 logger::log("SERVICE", "service already running");
+            }
+
+            // v0.0.36: purge legacy ACL-lock state from the service. Since v0.0.35
+            // locking is encryption-based and the app never notifies the service
+            // about new locks, anything still persisted there is from the old
+            // destructive ACL era and would be re-applied (owner=SYSTEM) at boot.
+            let legacy_items = service_client::get_locked_items();
+            if !legacy_items.is_empty() {
+                logger::log("SERVICE", &format!("purging {} legacy ACL items from service", legacy_items.len()));
+                for item in &legacy_items {
+                    service_client::notify_force_remove_locked_item(&item.path);
+                }
+                logger::log("SERVICE", "legacy ACL purge complete");
             }
 
             let vault_root = crate::vault::vault_dir();

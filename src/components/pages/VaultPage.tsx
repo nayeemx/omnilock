@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import {
   HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search, ShieldAlert,
-  Download, Upload, FileJson,
+  Download, Upload, FileJson, Archive, Trash2,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
   addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile,
   pickFolder, pickFile, rescueUnlock,
   exportConfig, importConfig,
-  type VaultConfigDto,
+  vaultStoreFile, vaultListFiles, vaultExtractFile, vaultDeleteFile,
+  type VaultConfigDto, type VaultFileInfo,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 
@@ -22,10 +23,83 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const [rescueLoading, setRescueLoading] = useState(false);
   const [rescuePath, setRescuePath] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
+  const [vaultFiles, setVaultFiles] = useState<VaultFileInfo[]>([]);
+  const [vaultFilesLoading, setVaultFilesLoading] = useState(false);
+  const [storingFile, setStoringFile] = useState(false);
+  const [busyFileId, setBusyFileId] = useState<string | null>(null);
 
   useEffect(() => {
     listDrives().then(setDrives).catch(e => setError("Failed to list drives: " + e));
   }, []);
+
+  useEffect(() => {
+    setVaultFilesLoading(true);
+    vaultListFiles()
+      .then(setVaultFiles)
+      .catch(() => setVaultFiles([]))
+      .finally(() => setVaultFilesLoading(false));
+  }, []);
+
+  const refreshVaultFiles = async () => {
+    try {
+      const files = await vaultListFiles();
+      setVaultFiles(files);
+    } catch (e) {
+      setError("Failed to list vault files: " + e);
+    }
+  };
+
+  const formatBytes = (n: number) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const formatDate = (ts: number) => new Date(ts * 1000).toLocaleString();
+
+  const handleStoreFile = async () => {
+    clearMessages();
+    try {
+      const path = await pickFile();
+      if (!path) return;
+      setStoringFile(true);
+      const info = await vaultStoreFile(path);
+      setSuccess(`"${info.name}" added to vault storage (${formatBytes(info.size)}). The original file was removed from its location.`);
+      await refreshVaultFiles();
+    } catch (e: any) {
+      setError("Failed to add file to vault: " + e);
+    }
+    setStoringFile(false);
+  };
+
+  const handleExtractFile = async (file: VaultFileInfo) => {
+    clearMessages();
+    try {
+      const destDir = await pickFolder();
+      if (!destDir) return;
+      setBusyFileId(file.id);
+      const dest = await vaultExtractFile(file.id, destDir);
+      setSuccess(`Extracted "${file.name}" to ${dest}`);
+      await refreshVaultFiles();
+    } catch (e: any) {
+      setError("Extract failed: " + e);
+    }
+    setBusyFileId(null);
+  };
+
+  const handleDeleteFile = async (file: VaultFileInfo) => {
+    clearMessages();
+    setBusyFileId(file.id);
+    try {
+      await vaultDeleteFile(file.id);
+      setSuccess(`Removed "${file.name}" from vault storage.`);
+      await refreshVaultFiles();
+    } catch (e: any) {
+      setError("Delete failed: " + e);
+    }
+    setBusyFileId(null);
+  };
 
   const lockedDrives = config?.locked_drives || [];
   const lockedFolders = config?.locked_folders || [];
@@ -269,6 +343,52 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           {pathSearch && filteredFolders.length === 0 && filteredFiles.length === 0 && lockedFolders.length + lockedFiles.length > 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
               No paths match "{pathSearch}".
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
+          <Archive className="w-5 h-5 text-[color:var(--primary)]" />
+          <h3 className="font-semibold">Vault Storage</h3>
+          <span className="text-xs text-[color:var(--muted-foreground)]">Private encrypted file storage</span>
+          <div className="ml-auto">
+            <button onClick={handleStoreFile} disabled={storingFile}
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
+                    style={{ background: "var(--gradient-brand)" }}>
+              {storingFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {storingFile ? "Storing..." : "Add File to Vault"}
+            </button>
+          </div>
+        </div>
+        <div className="divide-y divide-surface-border">
+          {vaultFiles.map(f => (
+            <div key={f.id} className="px-5 py-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">
+                <Archive className="w-4 h-4 text-[color:var(--violet)]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{f.name}</div>
+                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">
+                  {formatBytes(f.size)} · Added {formatDate(f.added_at)}
+                </div>
+              </div>
+              <button onClick={() => handleExtractFile(f)} disabled={busyFileId === f.id}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
+                {busyFileId === f.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                {busyFileId === f.id ? "Extracting..." : "Extract"}
+              </button>
+              <button onClick={() => handleDeleteFile(f)} disabled={busyFileId === f.id}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-surface-border text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)] hover:border-[color:var(--destructive)]/40 flex items-center gap-1.5 disabled:opacity-40">
+                {busyFileId === f.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                {busyFileId === f.id ? "..." : "Delete"}
+              </button>
+            </div>
+          ))}
+          {vaultFiles.length === 0 && (
+            <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
+              {vaultFilesLoading ? "Loading..." : "No files stored yet. Add a file to keep it encrypted inside the vault — the original is removed from its location."}
             </div>
           )}
         </div>

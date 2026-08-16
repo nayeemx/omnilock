@@ -4,6 +4,20 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.0.36] - 2026-08-16 (in development — uncommitted)
+
+### Added
+- **Vault Storage** (`vault_storage.rs`): private file storage inside the vault — "Add File to Vault" encrypts a file with the `file_encryption_key` into `%APPDATA%\InnologyBD\OmniLock\storage\` under a random name and deletes the original. Extract decrypts it back to a chosen folder (refuses to overwrite existing files); the manifest (`vault_files.enc`) is itself AES-GCM encrypted so stored file names never leak. New commands `cmd_vault_store_file` / `cmd_vault_list_files` / `cmd_vault_extract_file` / `cmd_vault_delete_file` + UI section on the Vault page.
+- **Stale-unlock detection after restart**: `cmd_verify_locked_state` checks every `locked_files`/`locked_folders` entry against disk after login and reports entries marked locked but no longer locked (temp-unlock that was never re-locked because the app exited). The frontend shows a prompt to **Re-lock all** (`cmd_relock_entries`) or **Keep unlocked** (`cmd_forget_unlocked_entries`, removes them from the vault).
+- **Legacy service boot sweep**: on app startup the service's persisted ACL `locked_items` are purged via `notify_force_remove_locked_item`, so the legacy daemon can never re-apply owner=SYSTEM ACL locks at boot. New `service_client::get_locked_items()`.
+
+### Fixed
+- **`cmd_biometric_login` parity gap**: fingerprint login now sets `auto_lock_minutes` and wires the USB-removal callback (workstation lock on locked-drive removal) exactly like `cmd_unlock_session`.
+- **Biometric login reworked to the Windows Hello prompt** (hardware-proven on the HP EliteBook 850 G5 / Synaptics VFS7552): the direct-WBF path from v0.0.35 is dead on this hardware — the WBF operational log records zero sensor events for background-app `WinBioIdentify` scans (90 s of real touches), while the user's own Windows sign-in identifications appear every time. The driver only serves Windows Hello. `authenticate_biometric` now calls `UserConsentVerifier.RequestVerificationAsync` via PowerShell 5.1 (`System.WindowsRuntimeSystemExtensions.AsTask`). **Root cause of the v0.0.33/34 "never worked" reports also found**: the old script referenced the nonexistent WinRT type `UserConsentVerifierResult` — `UserConsentVerificationResult` is the real name; the corrected script was verified live (`Verified`). `check_biometric_available` is back to fast registry/service checks; `Win32_Devices_BiometricFramework` removed from Cargo features.
+
+### Security
+- Vault storage blobs (`OVLF`) + manifest (`OVMF`) are AES-256-GCM encrypted with the vault's independent file key; nothing about stored files (names or content) is readable on disk.
+
 ## [0.0.35] - 2026-08-07 (released — installer + signature on the GitHub release; runtime E2E still outstanding)
 
 ### Added

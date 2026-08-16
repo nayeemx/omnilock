@@ -481,3 +481,44 @@ export async function scanAclDamage(path: string): Promise<string[]> {
 export async function bulkRecoverAcl(paths: string[]): Promise<[string, string][]> {
   return invoke("cmd_bulk_recover_acl", { paths });
 }
+
+export interface UnlockTarget {
+  target_type: string;
+  target_id: string;
+  display_name: string;
+}
+
+export async function verifyLockedState(): Promise<UnlockTarget[]> {
+  return invoke("cmd_verify_locked_state");
+}
+
+export async function relockEntries(paths: string[]): Promise<[string, string][]> {
+  return invoke("cmd_relock_entries", { paths });
+}
+
+export async function forgetUnlockedEntries(paths: string[]): Promise<void> {
+  return invoke("cmd_forget_unlocked_entries", { paths });
+}
+
+export interface VaultFileInfo {
+  id: string;
+  name: string;
+  size: number;
+  added_at: number;
+}
+
+export async function vaultStoreFile(path: string): Promise<VaultFileInfo> {
+  return invoke("cmd_vault_store_file", { path });
+}
+
+export async function vaultListFiles(): Promise<VaultFileInfo[]> {
+  return invoke("cmd_vault_list_files");
+}
+
+export async function vaultExtractFile(id: string, destDir: string): Promise<string> {
+  return invoke("cmd_vault_extract_file", { id, destDir });
+}
+
+export async function vaultDeleteFile(id: string): Promise<void> {
+  return invoke("cmd_vault_delete_file", { id });
+}

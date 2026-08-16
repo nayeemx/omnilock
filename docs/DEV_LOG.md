@@ -25,14 +25,20 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 | System presets (6) | `system_presets.rs` | ✅ Complete | All 6 registry/process blocks |
 | Installer guard | `installer_guard.rs` | ✅ Complete | Polls process names, kills installers |
 | File locker (encryption) | `file_locker.rs` | ✅ v0.0.35 rewrite | AES-256-GCM in place; ACL recovery kept |
+| Vault storage (add files to vault) | `vault_storage.rs` | ✅ v0.0.36 | OVLF blobs + encrypted OVMF manifest |
+| Stale-unlock detection after restart | `lib.rs` + `App.tsx` | ✅ v0.0.36 | `cmd_verify_locked_state` + Re-lock/Keep prompt |
+| Legacy service boot sweep | `lib.rs` + `service_client.rs` | ✅ v0.0.36 | Purges persisted ACL `locked_items` at startup |
+| Biometric login parity | `lib.rs` | ✅ v0.0.36 | Auto-lock minutes + USB-removal callback on fingerprint login |
+| Biometric login (Windows Hello) | `biometric.rs` | ✅ v0.0.36 | `UserConsentVerifier` prompt, proven on HP 850 G5 |
 | Drive locker | `drive_locker.rs` | ⚠️ Design concern | NoDrives + drive-root encryption (see AGENTS.md) |
-| Biometric (direct WBF) | `biometric.rs` | ✅ v0.0.35 rewrite | WinBio* direct, no Windows Hello |
+| Biometric (direct WBF) | `biometric.rs` | ❌ dead on owner's HW | v0.0.35 rewrite; driver ignores background captures |
 | Panic hotkey | `panic_hotkey.rs` | ✅ Complete | RegisterHotKey Win+Alt+L via FFI |
 | Hotkey listener | `panic_hotkey.rs` | ✅ Complete | Windows message loop thread |
 | Watchdog | `watchdog.rs` | ✅ Complete | Self-monitoring, no guard binary |
 | Password reset | `vault.rs` + `auth.rs` | ✅ Complete | Answer → decrypt → re-encrypt → wipe 2FA |
 | Frontend modularization | All `src/components/` | ✅ Done | 18 files, no monolith |
 | Tauri bridge cleanup | `tauri-bridge.ts` | ✅ Done | Dead exports removed |
+| Fingerprint engine (direct USB) | `omnilock-bio/` | 🚧 In progress | Rust port of python-validity (GPL-3.0); compiles, untested on hardware |
 | Inline error feedback | All page components | ✅ Done | No silent catch blocks |
 | Controlled Toggle | `Toggle.tsx` + parents | ✅ Done | Parent `on` prop drives state |
 | 2FA flow fix | `SecurityPage.tsx` | ✅ Done | Button→QR→verify sequence |
@@ -40,6 +46,56 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 ---
 
 ## Issue Log
+
+### v0.0.36: Stale-Unlock State Died With the App (temp-unlock didn't survive restart)
+**Date:** 2026-08-16
+**Symptoms:** Widget temp-unlock left items decrypted but the vault still listed them as locked. If the app exited while the item was open (common), the next login showed a pointless "already unlocked" prompt, and there was no way to re-encrypt or forget the entry.
+**Root Cause:** Unlock state was purely in-memory (`WIDGET_TEMP_UNLOCKED`), while the vault config persisted the item as locked. Nothing reconciled the two after a restart.
+**Solution:** `cmd_verify_locked_state` checks every `locked_files`/`locked_folders` entry against disk after login (`.omnilock` blob presence via `is_file_locked`/`is_folder_locked`) and returns stale entries. The frontend shows a full-screen prompt — **Re-lock all** (`cmd_relock_entries`: re-encrypts each path, per-item status; failures stay listed) or **Keep unlocked** (`cmd_forget_unlocked_entries`: removes the entries from the vault, saves config + summary). Deliberately no silent auto-re-encrypt: a folder the user is actively using must never be re-encrypted without consent.
+**Files Changed:** `src-tauri/src/lib.rs`, `src/App.tsx`, `src/lib/tauri-bridge.ts`
+**Prevention:** Any "temporarily lifted" lock must be re-checked against disk at the next login; reconcile vault intent with on-disk reality before trusting either.
+
+---
+
+### v0.0.36: Legacy Service Re-Applied ACL Locks At Boot
+**Date:** 2026-08-16
+**Symptoms:** After ACL Recovery fixed a file, the next boot re-locked it (owner=SYSTEM). Recovery commands purged the service list one path at a time, but any item the app never touched stayed persistent.
+**Root Cause:** The service (`svc.rs`) persists `locked_items` to ProgramData and re-applies `acl::apply_lock` at startup, regardless of what the app does now (encryption locks bypass the service entirely).
+**Solution:** One-time boot sweep in the app setup hook: `service_client::get_locked_items()` (new) then `notify_force_remove_locked_item` for each. Runs once per launch; after the first purge the list is empty → no-op.
+**Files Changed:** `src-tauri/src/service_client.rs`, `src-tauri/src/lib.rs`
+**Prevention:** Legacy persistence must be reconciled at app startup, not only when the user fixes one item at a time.
+
+---
+
+### v0.0.36: `cmd_biometric_login` Parity Gap
+**Date:** 2026-08-16
+**Symptoms:** Fingerprint login unlocked the vault but never applied auto-lock minutes nor the USB-removal callback — a locked drive removed mid-session would not lock the workstation, and idle auto-lock was inactive until a password login.
+**Root Cause:** `cmd_unlock_session` wires these; `cmd_biometric_login` was written before those subsystems existed and was never updated.
+**Solution:** `cmd_biometric_login` now also calls `auto_lock::set_auto_lock_minutes(config.auto_lock_minutes)` and `drive_locker::set_usb_removal_callback(...)` (LockWorkStation on locked-drive removal).
+**Files Changed:** `src-tauri/src/lib.rs`
+**Prevention:** Every session-establishing command must share one wiring routine; grep for `set_session_active`-style calls and check each login path.
+
+---
+
+### v0.0.36: Direct WBF Fingerprint Is Impossible On the Owner's Hardware
+**Date:** 2026-08-16
+**Symptoms:** "Fingerprint login never works" — the app's `WinBioIdentify` scan never returned: it blocked forever and ignored real finger touches.
+**Diagnosis (hardware-proven):** On the HP EliteBook 850 G5 (Synaptics VFS7552, WBF driver `oem27.inf`), the WBF operational log (`Microsoft-Windows-Biometrics/Operational`) records **zero sensor events** during a 90-second `WinBioIdentify` scan with multiple real touches, while the user's own Windows fingerprint sign-ins appear in the same log every time (event 1004 + 1605 + 1702). The driver only serves the Windows Hello pipeline — background apps never get a capture. Root cause of the earlier v0.0.33/34 failures also found: that Hello script referenced the nonexistent WinRT type `UserConsentVerifierResult` (`UserConsentVerificationResult` is the real name) → "Unable to find type" on hardware.
+**Solution:** `authenticate_biometric` now calls `Windows.Security.Credentials.UI.UserConsentVerifier.RequestVerificationAsync` through PowerShell 5.1 (`System.WindowsRuntimeSystemExtensions.AsTask`, `MakeGenericMethod` on `UserConsentVerificationResult`). Proven live: the Hello prompt appears, the fingerprint is accepted, `Verified` is returned. `check_biometric_available` is back to fast `sc query WbioSrvc` + `WindowsHello\Enabled=0x1` + Bio Credential Provider registry checks. All WBF code (incl. `Win32_Devices_BiometricFramework` Cargo feature) removed.
+**Files Changed:** `src-tauri/src/biometric.rs`, `src-tauri/Cargo.toml`
+**Prevention:** On this machine, the ONLY fingerprint path is Windows Hello. Do not reintroduce WinBio; do not use `UserConsentVerifierResult`.
+
+---
+
+### v0.0.36: Biometric "Available" Ignored Enrollments
+**Date:** 2026-08-16
+**Symptoms:** `check_biometric_available` returned `available: true` whenever a fingerprint sensor existed — even with zero fingerprints enrolled for the current user, so the login screen offered a biometric login that could never succeed.
+**Root Cause:** The old check only called `WinBioEnumBiometricUnits` (sensor count) and skipped registry/Hello probes.
+**Solution:** Rewrote the check: enumerate units → open a WBF session → for each unit call `WinBioEnumEnrollments` with a `WINBIO_IDENTITY` built from the current user's SID (`GetLengthSid`/`CopySid`); `available: true` only when ≥1 fingerprint is enrolled for that SID. Reason strings ("sensor found, but no fingerprint enrolled for this account…") guide the user. windows-sys 0.61 exports `WinBioEnumEnrollments` but not `WinBioEnumIdentities`, so the SID is built manually.
+**Files Changed:** `src-tauri/src/biometric.rs`
+**Prevention:** Availability checks must verify the actual credential exists (enrollment), not just the hardware.
+
+---
 
 ### GitHub Actions Failed On Every Push (copy refuses to overwrite committed binaries)
 **Date:** 2026-08-07
@@ -309,4 +365,26 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 
 ---
 
-Last updated: 2026-07-30
+## omnilock-bio Session (2026-08-16) — Rust fingerprint engine scaffolded, compiles clean
+
+**Date:** 2026-08-16
+**Status:** `cargo check` clean (14 dead-code warnings only — all reserved for enroll/verify milestone). Not yet tested on hardware; sensor still bound to the Synaptics WBF driver (`oem27.inf`).
+
+**Done:** reference read (usb/tls/blobs/blobs_d51/init_flash/flash/sensor/util/hw_tables); provisioning flow mapped; SMBIOS hw_key verified (`HP EliteBook 850 G5\0` + `5CG9233Q98\0` → `485020456c...`); 7 blobs extracted to `resources\*.bin`; `hw_tables.rs` regenerated (417 DeviceInfo + 20 FlashIcInfo rows); `windows\omnilock-sensor.inf` + `scripts\rebind.ps1`/`revert.ps1`; Rust modules `usb.rs` (WinUSB transport), `tls.rs` (full handshake/pairing/flash-block port), `crypto.rs`, `hwkey.rs`, `error.rs`, `hw_tables.rs` (+lookups), `flash.rs`, `sensor.rs`, `init_flash.rs`, `main.rs` (probe/reprovision/reboot/hwkey).
+
+**Errors fixed this session (45 → 0):**
+- windows-sys 0.61 gotchas: `CreateFileW`/`FILE_*` live in `Win32::Storage::FileSystem` (not `System::IO`); `GENERIC_READ`/`GENERIC_WRITE` in `Win32::Foundation`; `CreateEventW` requires the `Win32_Security` feature (SECURITY_ATTRIBUTES param); `HDEVINFO` is `isize` (`devs == 0`, not `is_null()`); `WinUsb_QueryPipe` is 4-arg with `WINUSB_PIPE_INFORMATION` (`PipeId`/`MaximumPacketSize` fields OK); `WINUSB_INTERFACE_HANDLE` is `*mut c_void`.
+- p256/ecdsa 0.16 gotchas: `as_affine()` (not `to_affine()`); `SigningKey::from_bytes` wants `FieldBytes` (`(&[u8;32]).into()`); `sign_prehash`/`verify_prehash` need `signature::hazmat::{PrehashSigner, PrehashVerifier}` in scope; `Scalar::from_repr` needs `elliptic_curve::PrimeField`; `NonZeroScalar::new(scalar)` (no `TryFrom<Scalar>`); `SharedSecret::raw_secret_bytes()` (no `as_bytes()`); sec1 `Coordinates` variant is `Uncompressed { x, y }` (not `Xy`); `DerSignature` via `sig.to_der().as_bytes()`.
+- cbc 0.1: `cbc::cipher::block_padding::NoPadding` (no `cbc::alloc` module).
+- Reference-matching fixes: `PartitionInfo::serialize` is `<BBHLL` (access_lvl is u16) + 4 zeros + sha256(12-byte hdr); read/write_flash cmd is `<BBBHLL` (13 bytes, H=0); read_flash size field at rsp[2..6]; `make_cert` DER sig = `msg(0xc0) + <L der> + der + zero-pad to 444`; `encrypt_key` pads with `l` copies of value `l`; `hs_key` prf output byte-reversed then little-endian scalar.
+- Generator `gen_hw_tables.py` now emits `"double-quoted"` names and re-emits `dev_info_lookup`/`flash_ic_table_lookup` (they were clobbered by regeneration).
+
+**Next:** user runs `scripts\rebind.ps1` as Administrator (binds sensor to WinUSB, `Service=WinUSB`) → `omnilock-bio probe` (expect PairingFailed → `reprovision`) → enroll/verify milestone (`db.py`/`operation.py`/`registration.py`/`verification.py` reference) → named-pipe daemon → OmniLock integration.
+
+**Files Changed:** `omnilock-bio\` (all), `docs\DEV_LOG.md`
+
+**Prevention:** windows-sys paths change between versions — verify imports against the actual vendored source before writing code. Regenerated files must reproduce lookups/helpers or they silently vanish.
+
+---
+
+Last updated: 2026-08-16

@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## System Architecture & Technical Specification
 
-**Document Version:** 2.1.0
+**Document Version:** 2.2.0
 **Product Name:** OmniLock
 **Developer / Publisher:** InnologyBD
 **Target Platform:** Windows 10/11 x64
@@ -39,7 +39,8 @@ OmniLock uses a **single-process Tauri architecture** with a dual-threaded Rust 
                |  │  system_presets.rs    ← All 6      │  |
                |  │  installer_guard.rs   ← Kill MSI   │  |
                |  │  file_locker.rs   ← AES-256-GCM  │  |
-               |  │  drive_locker.rs   ← NoDrives+Enc │  |
+                |  │  drive_locker.rs   ← NoDrives+Enc │  |
+                |  │  vault_storage.rs ← Vault Storage │  |
                |  │  panic_hotkey.rs     ← Win+Alt+L   │  |
                |  │  watchdog.rs          ← Self-monitor│ │
                |  │  models.rs          ← All DTOs     │  |
@@ -69,7 +70,8 @@ OmniLock uses a **single-process Tauri architecture** with a dual-threaded Rust 
 - **Key derivation:** `Argon2id(password, salt)` where salt is per-vault random, stored in vault header
 - **Header Magic:** `OMNI` (4 bytes)
 - **Version:** `u32` in outer `EncryptedVault` struct, currently `1`
-- **`VaultConfig.file_encryption_key` (v0.0.35):** 32 random bytes used to encrypt locked files/folders. Generated once at vault setup, independent of the master password, auto-migrated for older vaults on login. Held in `AppState.file_key` + global `ACTIVE_FILE_KEY` while a session is active.
+- **`VaultConfig.file_encryption_key` (v0.0.35):** 32 random bytes used to encrypt locked files/folders. Generated once at vault setup, independent of the master password, auto-migrated for older vaults on login. Held in `AppState.file_key` + global `ACTIVE_FILE_KEY` while a session is active. Also the key for vault storage blobs/manifest (v0.0.36).
+- **Vault storage (v0.0.36):** encrypted blobs in `%APPDATA%\InnologyBD\OmniLock\storage\` + encrypted manifest `vault_files.enc` (see §2.5).
 
 ### 2.5 File / Folder Encryption Locking (v0.0.35 — replaced ACL locking)
 - **Method:** AES-256-GCM authenticated encryption via the `aes-gcm` crate. No NTFS ACL modification.
@@ -109,7 +111,23 @@ Blocks the following via registry keys and process killing:
 - **Trigger:** On `WM_HOTKEY` (0x0312), sets `PANIC_ACTIVE` atomic flag
 - **Frontend response:** Clears vault config from memory, locks screen
 
-### 2.5 Self-Monitoring Watchdog
+### 2.5 Vault Storage — Private Encrypted File Storage (v0.0.36)
+- **Purpose:** store user files privately inside the vault (backlog user requirement #2) — files are encrypted with the vault's `file_encryption_key` and kept under `%APPDATA%\InnologyBD\OmniLock\storage\`.
+- **Blob file:** `<16-random-hex>.vaultfile`, layout `[4] "OVLF" | [1] version=1 | [12] nonce | [4] name_len (u32 LE) | [N] original name (UTF-8) | [8] size (u64 LE) | [*] ciphertext + 16-byte tag`.
+- **Manifest:** `vault_files.enc` — itself AES-GCM encrypted (`[4] "OVMF" | [12] nonce | [*] ciphertext JSON`). Plaintext JSON = `[{ "id", "name", "size", "added_at" }]`. Stored file names never leak on disk.
+- **Operations:** `store_file` (encrypt → write blob → **delete original only after** the blob is written), `extract_file` (decrypt to user-chosen folder; **refuses to overwrite** existing files; verifies size; removes blob + manifest entry after a successful write), `delete_file` (removes blob + manifest entry).
+- **Guards:** reuses `file_locker::do_encrypt`/`do_decrypt`/`check_protected_path` (made `pub`); refuses symlinks and protected paths.
+- **Commands:** `cmd_vault_store_file`, `cmd_vault_list_files`, `cmd_vault_extract_file`, `cmd_vault_delete_file` — all require a session + the file key.
+
+### 2.6 Stale-Unlock Reconciliation After Restart (v0.0.36)
+- `cmd_verify_locked_state` (post-login): checks every `locked_files`/`locked_folders` entry against disk (`is_file_locked`/`is_folder_locked` — is the `.omnilock` blob still there?). Entries whose blob is gone were temp-unlocked (widget) and never re-locked because the app exited.
+- Frontend prompt (App.tsx, full-screen overlay after unlock): **Re-lock all** → `cmd_relock_entries` (re-encrypts each path via `lock_folder`/`lock_file` by `is_dir()`, saves vault + `update_locked_folders` + summary; per-item status `ok`/`already_locked`/error; failures stay listed). **Keep unlocked** → `cmd_forget_unlocked_entries` (removes entries from both `locked_files` and `locked_folders`, `notify_folder_locked`, saves vault + summary). No silent re-encryption.
+
+### 2.7 Legacy Service ACL State Purge (v0.0.36)
+- The service (`service/src/bin/svc.rs`) persists `locked_items` to ProgramData and re-applies owner=SYSTEM ACL locks at boot — legacy behavior incompatible with encryption locks.
+- On app startup the setup hook calls `service_client::get_locked_items()` and purges each via `notify_force_remove_locked_item`. Runs once per launch; empty afterwards → no-op.
+
+### 2.8 Self-Monitoring Watchdog
 - Single thread polls every 500ms using `sysinfo`
 - Checks if `omnilock.exe` is still running
 - If main process died (unexpected crash/restart), attempts to restart itself from same directory
@@ -141,8 +159,15 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_force_unlock` | `path` | `Result<String, String>` | Take ownership + reset DACL (stubborn files) |
 | `cmd_rescue_unlock` | `path` | `Result<String, String>` | Rescue mode — needs session + file key |
 | `cmd_widget_unlock` | `password` | `Result<(), String>` | Temp-unlock target; auto re-locks on widget close |
-| `cmd_authenticate_biometric` | `message` | `Result<bool, String>` | Direct WBF fingerprint scan (no Windows Hello) |
-| `cmd_check_biometric` | None | `BiometricStatus` | Sensor availability via `WinBioEnumBiometricUnits` |
+| `cmd_authenticate_biometric` | `message` | `Result<bool, String>` | Windows Hello fingerprint verification (`UserConsentVerifier` via PowerShell 5.1) — direct WBF is dead on this hardware (driver ignores background-app captures) |
+| `cmd_check_biometric` | None | `BiometricStatus` | Fast availability: WbioSrvc running + `WindowsHello\Enabled=0x1` + Bio Credential Provider key |
+| `cmd_verify_locked_state` | None | `Vec<UnlockTarget>` | Stale entries: vault says locked, disk has no `.omnilock` blob |
+| `cmd_relock_entries` | `paths` | `Vec<(String, String)>` | Re-encrypt stale entries; per-item `ok`/`already_locked`/error |
+| `cmd_forget_unlocked_entries` | `paths` | `Result<(), String>` | Remove stale entries from the vault (keep unlocked) |
+| `cmd_vault_store_file` | `path` | `Result<VaultFileInfo, String>` | Encrypt file into vault storage, delete original |
+| `cmd_vault_list_files` | None | `Vec<VaultFileInfo>` | List stored files (from encrypted manifest) |
+| `cmd_vault_extract_file` | `id, dest_dir` | `Result<(), String>` | Decrypt stored file to a folder (no overwrite) |
+| `cmd_vault_delete_file` | `id` | `Result<(), String>` | Delete stored blob + manifest entry |
 | `cmd_install_context_menu` / `cmd_uninstall_context_menu` | None | `Result<String, String>` | Context menu + `.omnilock` association |
 | `cmd_toggle_locked_app` | `name, enabled` | `Result<(), String>` | Toggle app in config |
 | `cmd_add_locked_app` | `name, path, sha256` | `Result<(), String>` | Add app to lock list |
@@ -218,6 +243,7 @@ On every successful unlock (`cmd_unlock_session`), the backend calls:
 | `vault.enc` | `%APPDATA%\InnologyBD\OmniLock\vault.enc` | ✅ Yes |
 | `vault.meta` | `%APPDATA%\InnologyBD\OmniLock\vault.meta` | ✅ Yes |
 | `vault.recovery` | `%APPDATA%\InnologyBD\OmniLock\vault.recovery` | ✅ Yes |
+| `vault_files.enc` + `storage\*.vaultfile` | `%APPDATA%\InnologyBD\OmniLock\` | ✅ Yes (vault storage) |
 
 MSI/NSIS installers only overwrite files in the installation directory (Program Files). AppData is untouched.
 
@@ -231,6 +257,7 @@ MSI/NSIS installers only overwrite files in the installation directory (Program 
 3. **Recovery data key:** SHA-256(security_answer_lowercased_trimmed) → AES-GCM key
 4. **Nonce:** Random 96-bit, per encryption, stored in vault header
 5. **File/folder lock key (v0.0.35):** `VaultConfig.file_encryption_key` — 32 random bytes, stored inside the encrypted vault, never rotated on password change. Locked files are AES-256-GCM encrypted with a fresh 96-bit nonce per file. If the vault is lost, locked files are unrecoverable (backup the vault or export config).
+6. **Vault storage (v0.0.36):** stored files encrypted with the same `file_encryption_key` (fresh nonce per file); the manifest is separately AES-GCM encrypted so names never leak. Same recovery trade-off as locked files.
 
 ### Attack Surface Mitigations
 | Attack | Mitigation |
@@ -247,4 +274,4 @@ MSI/NSIS installers only overwrite files in the installation directory (Program 
 
 ---
 
-*End of ARCHITECTURE.md (OmniLock v2.0.0)*
+*End of ARCHITECTURE.md (OmniLock v2.2.0)*

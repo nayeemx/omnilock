@@ -1,7 +1,7 @@
 # OmniLock - Windows 11 App, Folder & File Locker
 ## AI Developer Execution Blueprint & Technical Instruction Guide
 
-**Document Version:** 2.1.0
+**Document Version:** 2.2.0
 **Product Name:** OmniLock
 **Developer / Publisher:** InnologyBD
 **Target Execution Environment:** Rust 1.97+, Tauri v2, Node.js v26+, Windows SDK (Win32 API), MSVC 2022
@@ -81,8 +81,9 @@ omnilock/
         ├── installer_guard.rs    # MSI/setup process killer
         ├── panic_hotkey.rs       # Win+Alt+L hotkey via raw FFI
         ├── file_locker.rs        # AES-256-GCM encryption locking + ACL damage scanner/recovery
+        ├── vault_storage.rs      # Vault storage (OVLF blobs + encrypted OVMF manifest)
         ├── drive_locker.rs       # NoDrives registry + drive-root encryption (design concern)
-        ├── biometric.rs          # Direct WBF fingerprint (WinBio*), DPAPI token
+        ├── biometric.rs          # Windows Hello (UserConsentVerifier) verification + DPAPI token
         ├── shell_context.rs      # Context menu + .omnilock file association
         ├── process_guard.rs      # App-kill monitor + Explorer folder monitor (widget prompt/relock)
         ├── watchdog.rs           # Self-monitoring (no guard binary)
@@ -194,7 +195,10 @@ If Rust check fails, read the error — it will tell you the exact file and line
 10. **No hardcoded values:** Daemon status, stats, versions come from backend/state.
 11. **File locking = encryption (v0.0.35):** `lock_file(path, key)` encrypts in place. Every session-establishing path (`cmd_unlock_session`, `cmd_biometric_login`, `cmd_widget_unlock`) MUST set `AppState.file_key` + `ACTIVE_FILE_KEY` or lock/unlock commands fail with "File encryption key not available".
 12. **Do NOT call `service_client::notify_lock_file/folder/drive` for new locks** — the service's ACL daemon is legacy and re-inflicts owner=SYSTEM damage (persisted and re-applied at boot). Use `notify_force_remove_locked_item` after ACL recovery instead.
-13. **Do NOT delete the WINBIO_* u32 constants in `biometric.rs`** — windows-sys 0.61 does not export them.
+13. **Biometric login = Windows Hello (v0.0.36):** the direct-WBF path is dead on the owner's hardware (Synaptics driver ignores background-app captures — proven via the WBF operational log). `authenticate_biometric` MUST use `UserConsentVerifier.RequestVerificationAsync` (PowerShell 5.1 + `System.WindowsRuntimeSystemExtensions.AsTask`) with the **correct WinRT type name `UserConsentVerificationResult`** — the old `UserConsentVerifierResult` does not exist and fails with "Unable to find type". Do not reintroduce WinBio code for this machine.
+14. **Vault storage reuses the file key (v0.0.36):** `vault_storage.rs` calls `file_locker::do_encrypt/do_decrypt` + `check_protected_path` (they are `pub`). Keep the OVLF/OVMF formats and the "delete original only after blob written" ordering intact — data loss otherwise.
+15. **Stale-unlock flow (v0.0.36):** never auto-re-encrypt entries silently. After login show the Re-lock all / Keep unlocked choice (`cmd_verify_locked_state` → `cmd_relock_entries` / `cmd_forget_unlocked_entries`).
+16. **Biometric availability (v0.0.36):** `check_biometric_available` uses fast registry/service checks (WbioSrvc RUNNING + `WindowsHello\Enabled=0x1` + Bio Credential Provider key). The real gate is the Hello prompt at scan time.
 
 ---
 
@@ -207,7 +211,7 @@ If Rust check fails, read the error — it will tell you the exact file and line
 6. Do not use `verifyTotp` or `SessionToken` from `tauri-bridge.ts` — dead exports.
 7. Do not touch `EncryptedVault` struct without updating `migrate_vault_if_needed()`.
 8. Do not reintroduce ACL-based locking for files/folders (destroyed user access — see DEV_LOG).
-9. Do not remove `windows-sys` features needed by existing commands, or the WINBIO_* constants in biometric.rs.
+9. Do not remove `windows-sys` features needed by existing commands, and do not reintroduce `Win32_Devices_BiometricFramework` (all WBF code removed in v0.0.36).
 10. Do not store recovery data inside vault file — it must be in `vault.recovery`.
 11. Do not use empty `catch {}` blocks — every call must show feedback to the user.
 12. Do not name local state variables the same as imported bridge functions.
@@ -229,7 +233,7 @@ If Rust check fails, read the error — it will tell you the exact file and line
 
 ---
 
-*End of INSTRUCTION.md (OmniLock v2.0.0)*
+*End of INSTRUCTION.md (OmniLock v2.2.0)*
 
 Application nane: OmniLock
 Homepage URL: https://github.com/nayeemx/omilock

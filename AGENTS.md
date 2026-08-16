@@ -4,10 +4,10 @@
 
 ## Current State
 
-- **Version**: 0.0.35 (version bumped, release published via CI — installer + signature on the GitHub release)
-- **Last Updated**: 2026-08-07
-- **Git**: working on `main`, v0.0.35 committed + pushed + tagged; CI creates the signed release on tag push.
-- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ✅ Release build + signature produced by CI (`.sig` + installer on the v0.0.35 release). ❌ Runtime E2E testing on a real machine still outstanding.
+- **Version**: 0.0.36 (in development — v0.0.36 work is in the working tree, **uncommitted**; v0.0.35 was released via CI)
+- **Last Updated**: 2026-08-16
+- **Git**: working on `main`, working tree contains the uncommitted v0.0.36 changes (do NOT revert).
+- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ❌ Runtime E2E testing on a real machine still outstanding.
 
 ---
 
@@ -21,11 +21,48 @@
 
 ---
 
-## What Was Done in This Session (2026-08-07) — the v0.0.35 feature set
+## What Was Done in This Session (2026-08-16) — the v0.0.36 feature set
+
+The user asked to scan the project, read every `.md` file, and solve everything still outstanding. All items below are in the working tree (uncommitted).
+
+### 1. Vault Storage — private encrypted file storage (backlog user requirement #2, HIGH priority)
+- **New module `src-tauri/src/vault_storage.rs`**: `store_file` encrypts a file with the vault's `file_encryption_key` into `%APPDATA%\InnologyBD\OmniLock\storage\<random-id>.vaultfile` and **deletes the original** only after the blob is written. `extract_file` decrypts to a user-chosen folder (refuses to overwrite existing files, verifies size), `delete_file` removes blob + manifest entry.
+- **Blob layout**: `[4] "OVLF" | [1] version | [12] nonce | [4] name_len | [N] name | [8] size (u64 LE) | [*] ciphertext+tag`.
+- **Manifest `vault_files.enc`** is itself AES-GCM encrypted (`OVMF` magic + nonce + ciphertext JSON) — stored file names never leak on disk.
+- Reuses `file_locker::do_encrypt/do_decrypt` and `check_protected_path` (both made `pub`); refuses symlinks and protected paths.
+- Commands: `cmd_vault_store_file`, `cmd_vault_list_files`, `cmd_vault_extract_file`, `cmd_vault_delete_file` (all session + file-key gated). Bridge: `vaultStoreFile/vaultListFiles/vaultExtractFile/vaultDeleteFile`. UI: "Vault Storage" section on VaultPage (Add / Extract / Delete, size + date display).
+
+### 2. Temp-unlock no longer dies with the app (AGENTS priority issue #2 — SOLVED)
+- `cmd_verify_locked_state`: after login, checks every `locked_files`/`locked_folders` entry against disk; any entry whose `.omnilock` blob is gone (temp-unlocked, never re-locked — e.g. app exited while the item was open) is returned.
+- Frontend (App.tsx): after unlock, a full-screen prompt lists the stale items with **Re-lock all** (`cmd_relock_entries` — re-encrypts, returns per-item status; failures stay in the list) and **Keep unlocked** (`cmd_forget_unlocked_entries` — removes from vault, saves config + summary). No auto-re-encrypt without consent (folders the user may be actively using are never silently re-encrypted).
+- Bridge: `verifyLockedState`, `relockEntries`, `forgetUnlockedEntries`.
+
+### 3. Legacy service ACL state purged at boot (AGENTS priority issue #3 — SOLVED)
+- `service_client::get_locked_items()` added; the app setup hook now purges every persisted item via `notify_force_remove_locked_item`. The legacy service can no longer re-apply owner=SYSTEM ACL locks at boot. Runs once per launch; empty list afterwards → no-op.
+
+### 4. `cmd_biometric_login` parity gap (AGENTS priority issue #4 — SOLVED)
+- Fingerprint login now also calls `auto_lock::set_auto_lock_minutes(config.auto_lock_minutes)` and `drive_locker::set_usb_removal_callback(...)` (workstation lock on locked-drive removal) — identical wiring to `cmd_unlock_session`.
+### 5. Biometric login now uses the WINDOWS HELLO prompt — hardware-proven (AGENTS priority issue #7 — SUPERSEDED)
+
+- **Hardware finding (proven 2026-08-16 on the owner's HP EliteBook 850 G5, Synaptics VFS7552, WBF driver oem27.inf)**: the direct-WBF path CANNOT work on this machine. `WinBioIdentify` blocks forever and the sensor never delivers a single capture to a background app — the WBF operational event log records ZERO sensor events during 90s of real finger touches, while the user's own Windows sign-in identifications appear in the same log every time (event 1004, `Microsoft-Windows-Biometrics/Operational`). The driver only serves the Windows Hello pipeline.
+- **Old check (`WinBioEnumEnrollments` + SID)**: irrelevant now — removed.
+- **New implementation** (`src-tauri/src/biometric.rs`, rewritten): `authenticate_biometric` runs PowerShell 5.1 → `Windows.Security.Credentials.UI.UserConsentVerifier.RequestVerificationAsync` via the `System.WindowsRuntimeSystemExtensions.AsTask` pattern — the SAME engine as the Windows lock screen. Windows sign-in is untouched; the user touches the sensor, a small Windows prompt confirms, OmniLock proceeds.
+- **CRITICAL gotcha found**: the old v0.0.34 script used the type `UserConsentVerifierResult` which DOES NOT EXIST in WinRT (`UserConsentVerificationResult` is the real name). It failed with "Unable to find type" on real hardware — the v0.0.33/34 Hello path was therefore ALSO broken on this machine, which is why "it never worked". The corrected script was proven live: prompt appears, fingerprint accepted, `Verified` returned.
+- `check_biometric_available` is back to fast registry/service checks (WbioSrvc running + `WindowsHello\Enabled=0x1` + Bio Credential Provider key).
+- `Win32_Devices_BiometricFramework` removed from BOTH `windows-sys` and `windows` feature lists in Cargo.toml (no WBF code remains).
+
+### 6. Docs updated (standing rule)
+- AGENTS.md, CHANGELOG.md (0.0.36 entry), docs/DEV_LOG.md, docs/ARCHITECTURE.md (IPC table + vault storage), docs/SECURITY.md, docs/PRD.md, README.md, docs/INSTRUCTION.md (tree + decisions).
+
+---
+
+## What Was Done in the Previous Session (2026-08-07) — the v0.0.35 feature set
 
 The user (owner) reported 6 core problems. This session continued the interrupted implementation and **finished + verified** it. Everything below is in the working tree.
 
 ### 1. Fingerprint login now uses the Windows Biometric Framework DIRECTLY (no Windows Hello)
+
+**⚠️ SUPERSEDED in v0.0.36** — hardware testing (2026-08-16) proved this driver ignores background-app captures; the app now uses the Windows Hello prompt instead (see "What Was Done in This Session" item 5). Kept below for history.
 
 User requirement #5: "my computer has fingerprint sensor… I don't want it to work via Windows Hello."
 
@@ -99,18 +136,13 @@ User requirement #5: "my computer has fingerprint sensor… I don't want it to w
 ## Files Modified in This Session (git status — DO NOT REVERT)
 
 ```
- M .github/workflows/build.yml
- M src-tauri/Cargo.toml
- M src-tauri/src/auth.rs
  M src-tauri/src/biometric.rs
- M src-tauri/src/drive_locker.rs
  M src-tauri/src/file_locker.rs
  M src-tauri/src/lib.rs
- M src-tauri/src/models.rs
- M src-tauri/src/process_guard.rs
- M src-tauri/src/shell_context.rs
- M src/components/pages/DiagnosticsPage.tsx
- M src/components/pages/SecurityPage.tsx
+ M src-tauri/src/service_client.rs
+ M src-tauri/src/vault_storage.rs      (NEW — vault file storage)
+ M src/App.tsx
+ M src/components/pages/VaultPage.tsx
  M src/lib/tauri-bridge.ts
 ```
 
@@ -126,7 +158,7 @@ Plus the documentation updated in this session: `AGENTS.md`, `CHANGELOG.md`, `RE
 | All pipe responses fail deser | `SvcResponse` had `#[serde(tag = "type")]` on client, no tag on service | Removed tag in `service_client.rs` |
 | icacls /deny silently fails | CLI reports success but never applies deny ACE | Rewrote `acl.rs` to use Win32 `SetNamedSecurityInfoW` |
 | **ACL lock permanently destroys access (user #6)** | `apply_safe_lock` set owner=SYSTEM + restricted DACL; Windows ignores WRITE_DAC under DENY-everyone style locks | **Replaced with AES-256-GCM encryption** (`file_locker.rs`) + ACL Recovery scanner to fix old damage |
-| **`WINBIO_*` constants not found (cargo E0432)** | windows-sys 0.61 doesn't re-export `WINBIO_TYPE_FINGERPRINT`, `WINBIO_POOL_SYSTEM`, `WINBIO_FLAG_DEFAULT`, `WINBIO_ID_TYPE_SID` | Define them as raw `u32` constants in `biometric.rs` (SDK header values: 0x8, 0x1, 0x0, 3) |
+| **`WINBIO_*` constants not found (cargo E0432)** | windows-sys 0.61 doesn't re-export `WINBIO_TYPE_FINGERPRINT`, `WINBIO_POOL_SYSTEM`, `WINBIO_FLAG_DEFAULT`, `WINBIO_ID_TYPE_SID` | Define them as raw `u32` constants in `biometric.rs` (SDK header values: 0x8, 0x1, 0x0, 3) — **MOT since v0.0.36: all WBF code removed** |
 | **`unlock_file/lock_folder` missing key arg (cargo E0061)** | encryption rewrite changed signatures; `drive_locker.rs` + `cmd_rescue_unlock` were never updated | Pass `key_material` at every call site (verified by search: 18 call sites) |
 | **"File encryption key not available" after biometric/widget login** | `cmd_biometric_login` and `cmd_widget_unlock` never set `state.file_key` (only `cmd_unlock_session` did) | Set `state.file_key` + `set_active_file_key` in both commands |
 | **Service re-locks fixed files at boot** | Service persists `locked_items` and re-applies `acl::apply_lock` at startup; ACL recovery fixed the ACL but never purged the list | Recovery commands (`cmd_force_unlock`, `cmd_recover_acl`, `cmd_bulk_recover_acl`) now call `notify_force_remove_locked_item` |
@@ -134,6 +166,7 @@ Plus the documentation updated in this session: `AGENTS.md`, `CHANGELOG.md`, `RE
 | **CI release step: "Resource not accessible by integration"** | Default `GITHUB_TOKEN` is read-only; creating a release needs `contents: write` | `permissions: contents: write` at the top of `build.yml` |
 | Widget steals focus while user works | Monitor calls `widget.show()+set_focus()` every 2 s poll | `PROMPTED_FOLDERS` static — prompt once per folder (v0.0.34) |
 | Biometric token loadable without fingerprint | Token was DPAPI-only; Hello prompt was client-side | `authenticate_biometric` runs inside `cmd_biometric_login` before loading token (v0.0.34) |
+| **Fingerprint login "never works" on the owner's laptop** | Two stacked failures: v0.0.34 Hello script used the nonexistent `UserConsentVerifierResult` type ("Unable to find type" — `UserConsentVerificationResult` is the real name); v0.0.35's direct WBF `WinBioIdentify` is ignored by the Synaptics driver (zero sensor events in the WBF log for background apps) | v0.0.36: Hello prompt with the **corrected type name** — proven live (`Verified`); Windows sign-in untouched |
 | Weather inaccurate | wttr.in bad for Bangladesh | Open-Meteo API |
 
 ---
@@ -180,7 +213,7 @@ cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
 
 ---
 
-## Architecture (updated for v0.0.35)
+## Architecture (updated for v0.0.36)
 
 ```
 omnilock/
@@ -197,14 +230,15 @@ omnilock/
 │       ├── lib.rs            # Tauri commands, AppState (file_key), UNLOCK_TARGET/WIDGET_TEMP_UNLOCKED/ACTIVE_FILE_KEY
 │       ├── vault.rs          # Argon2id + AES-256-GCM vault
 │       ├── auth.rs           # setup/unlock + file_encryption_key generation
-│       ├── biometric.rs      # DIRECT WBF fingerprint (WinBio*), DPAPI token
+│       ├── biometric.rs      # Windows Hello (UserConsentVerifier) verification + DPAPI token
 │       ├── file_locker.rs    # AES-256-GCM encryption locking + ACL damage scanner/recovery
-│       ├── drive_locker.rs   # NoDrives registry + drive-root encryption (design concern — see below)
+│       ├── vault_storage.rs  # vault file storage (OVLF blobs + encrypted OVMF manifest)
+│       ├── drive_locker.rs   # NoDrives registry + USB-removal monitor
 │       ├── process_guard.rs  # app kill monitor + Explorer folder monitor (widget prompt, auto-relock)
 │       ├── shell_context.rs  # context menu + .omnilock file association
 │       └── ...               # totp, system_presets, installer_guard, watchdog, system_monitor, etc.
-├── service/                  # Windows service (named-pipe ACL daemon — LEGACY, now only for password
-│   │                         #   verification + legacy ACL items; encryption locks bypass it)
+├── service/                  # Windows service (named-pipe ACL daemon — LEGACY, state purged at app boot;
+│   │                         #   encryption locks bypass it entirely)
 ├── shared/                   # omnilock-shared protocol crate (SvcRequest/SvcResponse/LockedItem)
 ├── AGENTS.md                 # THIS FILE — session handoff
 └── docs/                     # ARCHITECTURE, BUILD_SETUP, DEV_LOG, INSTRUCTION, PRD, SECURITY
@@ -218,6 +252,7 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 
 ## Version History (most recent first)
 
+- **0.0.36 (IN DEVELOPMENT — working tree, uncommitted)** — Vault Storage (encrypted private file storage + encrypted manifest), stale-unlock detection + re-lock/keep prompt after restart, legacy service ACL boot purge, `cmd_biometric_login` parity (auto-lock minutes + USB-removal callback), **biometric login reworked to the Windows Hello prompt** (hardware-proven on the HP EliteBook 850 G5: the Synaptics WBF driver ignores background-app captures, so direct WBF is dead; the corrected `UserConsentVerificationResult` type name makes the Hello path work).
 - **0.0.35 (RELEASED 2026-08-07, CI-built + signed)** — AES-256-GCM encryption-based file/folder locking replaces destructive ACL locking; direct WBF fingerprint (no Windows Hello); ACL damage scanner + bulk recovery UI; widget temp-unlock + auto-relock; `.omnilock` file association + `--open-locked`; GitHub Release pipeline fixed and now works on tag push. Installer sha256 `2598219E8238B1EF...7F68CDCC` on the `v0.0.35` release. Runtime E2E testing still outstanding.
 - **0.0.34** — Widget focus-steal fix (prompt once per folder). Server-side Windows Hello enforcement in `cmd_biometric_login`. Signed installer + updated `latest.json`.
 - **0.0.33** — File-unlock child ACL fix v3, `force_unlock`, widget capability fix, `sync_vault_to_service` wiring.
@@ -230,7 +265,7 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 ## Next Session: Continue from Here
 
 ### Where we left off
-All v0.0.35 code changes are in the working tree and **compile clean**. The previous session died mid-way with usage limits; this session fixed the remaining compile errors, the two file-key session bugs, and the destructive service-notification problem, then verified builds. **Nothing is committed, no release exists.**
+All v0.0.36 code changes are in the working tree and **compile clean** (src-tauri + service + tsc). Nothing is committed and no release exists.
 
 ### Suggested next steps (in order)
 1. **Run the app end-to-end on Windows** (you must do this on a real machine — I cannot):
@@ -238,27 +273,30 @@ All v0.0.35 code changes are in the working tree and **compile clean**. The prev
    - Setup wizard → create vault → verify `file_encryption_key` in vault
    - Lock a **test** file/folder (start small — see the drive warning below!) → confirm `.omnilock` blob created, original gone
    - Open the locked folder in Explorer → widget pops up → unlock with password → use files → close widget → verify auto re-lock
-   - Fingerprint: enroll a fingerprint in Windows Settings → Accounts → Sign-in options (must be enrolled for the user account), then test biometric login — expect the WBF scan prompt, NOT a Windows Hello dialog
+   - **Kill the app while a widget-unlocked item is still open → relaunch → log in → verify the stale-unlock prompt appears → test both Re-lock all and Keep unlocked**
+   - Vault page → Vault Storage → Add File → verify original deleted + blob in `%APPDATA%\InnologyBD\OmniLock\storage\` → Extract to a folder → Delete
+   - Fingerprint: enroll a fingerprint in Windows Settings → Accounts → Sign-in options (must be enrolled for the user account), then test biometric login — expect the **Windows Hello fingerprint prompt** to appear (touch sensor → Verified). If the toggle is missing, check Diagnostics → Biometric (hardware available / token saved / token decrypts).
    - Diagnostics → ACL Recovery: scan a previously-broken path, Fix All, verify the service no longer re-locks at boot
    - Double-click a `.omnilock` file → OmniLock opens with unlock widget (tests file association + `--open-locked`)
-2. **Fix anything the test surfaces**, then commit the v0.0.35 work (`git add` the 12 files).
-3. **Release v0.0.35**: bump `version` in `src-tauri/Cargo.toml` + `package.json` + `tauri.conf.json` to `0.0.35`, commit, `git tag v0.0.35 && git push origin main --tags`. The CI workflow builds and creates the signed GitHub Release automatically (requires the 2 signing secrets in repo settings). After release, verify `latest.json`-style auto-update endpoint (check `tauri.conf.json` updater config) and download URL are live.
+2. **Fix anything the test surfaces**, then commit the v0.0.36 work (`git add` the changed files).
+3. **Release v0.0.36**: bump `version` in `src-tauri/Cargo.toml` + `package.json` + `tauri.conf.json` to `0.0.36`, commit, `git tag v0.0.36 && git push origin main --tags`. The CI workflow builds and creates the signed GitHub Release automatically (requires the 2 signing secrets in repo settings). After release, verify `latest.json`-style auto-update endpoint and download URL are live.
 4. Update this file + CHANGELOG + DEV_LOG as you go (standing rule).
 
 ### Priority issues to investigate (known design concerns)
 1. **DRIVE LOCK (resolved for now, more work optional)**: v0.0.35 drive lock = NoDrives hide only (whole-drive recursive encryption was removed as a data hazard). Direct path access (e.g. `D:\` in the address bar) still works — true blocking needs a kernel driver or per-user-selected subpath encryption. Decide whether that matters and implement if so.
-2. **Temp-unlock does not survive an app restart**: if the app exits while a widget-unlocked item is open, files stay decrypted but the vault still lists them as locked → next login shows a pointless prompt and the files were unprotected in between. Recommended: on login, verify each locked_files/locked_folders entry and re-encrypt if its blobs are missing (or mark it unlocked). Do NOT auto-re-encrypt folders the user may be actively using — prompt first.
-3. **Legacy service state**: old locked items may still be in the service's persisted `locked_items` (ProgramData) and get ACL-re-locked at boot. The ACL Recovery scanner purges them one by one; consider a one-time boot sweep that force-removes legacy items.
-4. **`cmd_biometric_login`** does not set the USB-removal callback / drive monitor wiring that `cmd_unlock_session` does (minor parity gap).
+2. ~~**Temp-unlock does not survive an app restart** — **SOLVED in v0.0.36**: `cmd_verify_locked_state` + Re-lock all / Keep unlocked prompt after login.~~
+3. ~~**Legacy service state** — **SOLVED in v0.0.36**: one-time boot sweep purges the service's persisted `locked_items` (ProgramData) via `get_locked_items()` + `notify_force_remove_locked_item`.~~
+4. ~~**`cmd_biometric_login` parity gap** — **SOLVED in v0.0.36**: sets auto-lock minutes + USB-removal callback like `cmd_unlock_session`.~~
 5. **App locking = encrypting the .exe** (`cmd_add_locked_app`/`cmd_toggle_locked_app` call `lock_file` on the exe path): works only if the app isn't running, and makes the installed program data unreadable until unlocked. Verify this matches intent (process-kill + exe encryption is a heavy "app lock").
 6. **`.omnilock` blobs have no recovery if the vault is lost** — the key is inside the encrypted vault. Document this trade-off to the user (recovery = vault backup + recovery key flow).
-7. **`check_biometric_available` counts sensors, not enrollments** — fingerprint login may be offered before any fingerprint is enrolled for the user. Optionally check `WinBioEnumEnrollments` for the current SID.
+7. ~~**`check_biometric_available` counts sensors, not enrollments** — **SUPERSEDED in v0.0.36**: the enrollment check was removed entirely; the whole direct-WBF path is dead on this hardware (driver only serves Windows Hello), so the app uses the Hello prompt (see "What Was Done in This Session" item 5).~~
 8. **`ACTIVE_FILE_KEY` intentionally stays in memory while logged out** — the widget temp-unlock/auto-relock model needs it (the widget works from the login screen). If stronger hygiene is wanted, clear it when no widget target is pending and no session exists (design trade-off).
+9. **Direct WBF fingerprint access is impossible on the owner's laptop** (HP EliteBook 850 G5 / Synaptics VFS7552 / oem27.inf): `WinBioIdentify` blocks forever and the WBF operational log shows ZERO sensor events for background apps, while Windows Hello sign-in events appear every time. Any future "no Hello" fingerprint feature must target other hardware or a second USB reader — do NOT reintroduce WinBio code for this machine.
 
 ### Feature backlog
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| Vault "add files to vault" storage (user #2) | High | Vault currently only stores lock lists, not arbitrary files |
+| ~~Vault "add files to vault" storage (user #2)~~ | ~~High~~ | **DONE in v0.0.36** — `vault_storage.rs` + Vault Storage UI |
 | Hide files/folders/drives (user #3) | Medium | Partial via NoDrives; folder hiding not implemented |
 | Auto-relock after idle | Medium | Idle detection exists; re-lock trigger wired via `auto_lock` |
 | Shell context menu (right-click lock/unlock) | Done | `shell_context.rs` + `.omnilock` association |
