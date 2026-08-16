@@ -1,12 +1,12 @@
 {
-  "pub_date": "2026-08-07T11:13:25Z",
-  "version": "v0.0.35",
-  "notes": "AES-256-GCM encryption-based file/folder locking replaces the destructive ACL lock; direct WBF fingerprint login (no Windows Hello); ACL Recovery scanner + bulk fixer for files damaged by the old lock; widget temp-unlock + auto re-lock on close; .omnilock double-click unlock; CI now builds & releases signed installers on tag push.",
-  "platforms": {
-    "windows-x86_64": {
-      "url": "https://github.com/nayeemx/omnilock/releases/download/v0.0.35/OmniLock_0.0.35_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN2N2NkRrUWk5VU5QTEhDU0ZrM1lla2RtS21YU2RhMXJ0VFA3SHZyYThjUWJtT3k1WS9lWXQwbFRjZ0l4aXhrcThmL0ZVa3AvUko5bTlwUk95RVFkUmcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2MTAxMjA0CWZpbGU6T21uaUxvY2tfMC4wLjM1X3g2NC1zZXR1cC5leGUKR1YxQVFDdS9ZMEdMMDdsQ2RnU0I0NUExM1ZwcEErWTljOHhTc2kyZjJOV29LeDBTcHY3ZGVLWk5LQ1NlNzFDWTh5NTVWK0hpeG9qYUNJRUtRcmc4QUE9PQo=",
-      "sha256": "2598219e8238b1efbe10fc5afa3c8c399cd92207cb0066f67829502f67f68cdc"
-    }
-  }
+    "notes":  "Vault Storage: encrypted private file storage (Add/Extract/Delete, encrypted manifest). Stale temp-unlock detection after restart with Re-lock all / Keep unlocked choice. Legacy service ACL locks purged at boot. Fingerprint login fixed: now uses the Windows Hello prompt (hardware-proven on HP EliteBook 850 G5; direct WBF is impossible on this driver). Biometric login parity with password login (auto-lock + USB-removal).",
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "url":  "https://github.com/nayeemx/omnilock/releases/download/v0.0.36/OmniLock_0.0.36_x64-setup.exe",
+                                             "sha256":  "ff982c26ee5dc96b0c5fc296eab959ef26e24435bb69c056f0848f5e5cf2afe8",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdm0rZTloWVBsN1hNY2VXa3hOSUZ0bVRZZE50TGttWkpxbmxTTG01Y0ZMeHVGcTBwTHBZbmEzNFRCMnlyR2JjOXJnYVI3ZnU4OC83aVgzZnlsZ0Y5MFlFOG0zZTZWYWdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg2OTAzNzMyCWZpbGU6T21uaUxvY2tfMC4wLjM2X3g2NC1zZXR1cC5leGUKK1V5b3E4UFhzN1hycHdrSGdJVmoweDRxQ3BFaFRKTGVSdVlSLzZGTXhpSzB5MUY4ZUc2ZWVTV0JGZEt0SXo0ZVZvbWVCb0VRQ3h6aXE1T1FxbG1CQmc9PQo="
+                                         }
+                  },
+    "pub_date":  "2026-08-16T18:08:52Z",
+    "version":  "v0.0.36"
 }
