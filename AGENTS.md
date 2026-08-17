@@ -4,10 +4,10 @@
 
 ## Current State
 
-- **Version**: 0.0.37 (**RELEASED 2026-08-17** via CI: signed installer + `.sig` on the GitHub release; `latest.json` updated on both endpoints — the installed 0.0.36 app auto-updates). Working tree clean except `omnilock-bio/` (abandoned engine, intentionally untracked — disposition unresolved).
+- **Version**: 0.0.37 (**RELEASED 2026-08-17** via CI: signed installer + `.sig` on the GitHub release; `latest.json` updated on both endpoints — installed 2026-08-17 by the owner, biometric login **verified working** on the HP EliteBook 850 G5). Working tree clean except `omnilock-bio/` (abandoned engine, intentionally untracked — disposition unresolved).
 - **Last Updated**: 2026-08-17
-- **Git**: on `main` at `<pending>`; tag `v0.0.37` pushed; last commit "release v0.0.37: publish latest.json...".
-- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ❌ Runtime E2E testing on a real machine still outstanding (see Next Session).
+- **Git**: on `main` at `2df458a`; tag `v0.0.37` pushed; last commit "docs: fill v0.0.37 installer sha256 in AGENTS.md".
+- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ✅ **Biometric login E2E verified on the real machine** (v0.0.37 installed, fingerprint login works); other E2E flows (widget re-lock, vault storage, ACL recovery) still untested on the machine.
 
 ---
 
@@ -266,16 +266,16 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 ## Next Session: Continue from Here
 
 ### Where we left off
-v0.0.36 is **released** (committed, tagged, CI-built signed release, `latest.json` live on both endpoints). The installed 0.0.35 app will offer the update automatically. Runtime E2E testing on the real machine is the only outstanding item.
+v0.0.37 is **released** (committed, tagged, CI-built signed release, `latest.json` live on both endpoints). **Biometric login is verified working on the real machine** — the owner installed v0.0.37 on the HP EliteBook 850 G5 and logged in with the fingerprint via the Windows Hello prompt. The remaining E2E flows (widget re-lock, vault storage, ACL recovery, stale-unlock prompt) are still untested on the machine.
 
 ### Suggested next steps (in order)
-1. **Let the installed app auto-update to v0.0.36, then run the app end-to-end on Windows** (you must do this on a real machine — I cannot):
-   - Update from the installed app (Settings → check for updates / restart app), or install `OmniLock_0.0.36_x64-setup.exe` from the GitHub release.
+1. **Let the installed app auto-update to v0.0.37, then run the app end-to-end on Windows** (you must do this on a real machine — I cannot):
+   - ~~Update from the installed app~~ — **DONE 2026-08-17: v0.0.37 installed; fingerprint login verified working (the reason for this release).**
    - Lock a **test** file/folder (start small — see the drive warning below!) → confirm `.omnilock` blob created, original gone
    - Open the locked folder in Explorer → widget pops up → unlock with password → use files → close widget → verify auto re-lock
    - **Kill the app while a widget-unlocked item is still open → relaunch → log in → verify the stale-unlock prompt appears → test both Re-lock all and Keep unlocked**
    - Vault page → Vault Storage → Add File → verify original deleted + blob in `%APPDATA%\InnologyBD\OmniLock\storage\` → Extract to a folder → Delete
-   - **Fingerprint login (the reason for this release)**: Security page → Biometric Login (Fingerprint) → Enable → enter master password → log out → Login with Fingerprint → expect the **Windows Hello fingerprint prompt** → touch sensor → `Verified` → unlocked. If the toggle is missing, check Diagnostics → Biometric (hardware available / token saved / token decrypts).
+   - **Fingerprint login (the reason for this release)**: Security page → Biometric Login (Fingerprint) → Enable → enter master password → log out → Login with Fingerprint → expect the **Windows Hello fingerprint prompt** → touch sensor → `Verified` → unlocked. If the toggle is missing, check Diagnostics → Biometric (hardware available / token saved / token decrypts). ~~← **DONE 2026-08-17: verified working on the real machine.**~~
    - Diagnostics → ACL Recovery: scan a previously-broken path, Fix All, verify the service no longer re-locks at boot
    - Double-click a `.omnilock` file → OmniLock opens with unlock widget (tests file association + `--open-locked`)
 2. **Fix anything the test surfaces** and release as v0.0.37 (bump `src-tauri/Cargo.toml` + `package.json` + `tauri.conf.json`, commit, `git tag v0.0.37 && git push origin main --tags`; CI builds + signs the release; then update `latest.json` in root + `docs/` with the release's `.sig` + sha256 and push).

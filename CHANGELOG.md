@@ -4,7 +4,7 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
-## [0.0.37] - 2026-08-17 (in development — uncommitted)
+## [0.0.37] - 2026-08-17 (released — signed installer + latest.json on both endpoints; **biometric login verified working on the owner's HP EliteBook 850 G5**)
 
 ### Fixed
 - **Biometric "unable to detect" on Windows 11**: `check_biometric_available` used registry keys (`WindowsHello\Enabled`, `Bio\Credential Provider`) that do NOT exist on Windows 11 — every Win11 machine reported "Windows Hello is not available" even with a working fingerprint sensor. Now queries `UserConsentVerifier.CheckAvailabilityAsync()` directly (the WinRT API Windows itself uses); verified returning `Available` on the HP EliteBook 850 G5. `cmd_check_biometric` is now async (spawn_blocking) so the ~1s PowerShell probe never blocks the UI.

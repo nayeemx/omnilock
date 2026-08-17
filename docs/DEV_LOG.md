@@ -49,6 +49,7 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 
 ### v0.0.37: Biometric "Unable to Detect" On Windows 11 + Visible Console Flashes
 **Date:** 2026-08-17
+**Status:** ✅ RESOLVED + user-verified 2026-08-17 — installed v0.0.37 on the HP EliteBook 850 G5: Security page reports availability, login screen shows "Login with Fingerprint", fingerprint login works end-to-end.
 **Symptoms:** (1) The released v0.0.36 showed "Windows Hello is not available on this device" on the owner's HP EliteBook 850 G5 — the machine where the Hello prompt was proven to work. (2) Terminal windows appeared and closed in a blink while using the app.
 **Root Cause:** (1) `check_biometric_available` used registry keys `HKLM\...\Authentication\WindowsHello\Enabled` and `HKLM\...\Authentication\Bio\Credential Provider` — both are ABSENT on Windows 11 (verified: `reg query` returns ERROR for both, while `UserConsentVerifier.CheckAvailabilityAsync()` returns `Available`). (2) `cloud_status.rs` (7×) and `shell_context.rs` (16×) spawned `reg`/`ie4uinit`/`cmd` via raw `Command::new` without `CREATE_NO_WINDOW`; the service daemon start (`lib.rs`) also spawned `omnilock-svc.exe` visibly — every one flashes a console.
 **Solution:** (1) `check_biometric_available` now runs the same AsTask PowerShell pattern with `UserConsentVerifier.CheckAvailabilityAsync()` → `Available` on this machine; `cmd_check_biometric` made async (`spawn_blocking`). (2) All raw spawns replaced with `crate::hidden_cmd` (`CREATE_NO_WINDOW`).
