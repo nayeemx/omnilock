@@ -1,0 +1,32 @@
+; omnilock-bio WinUSB driver for the Synaptics VFS7552 PurePrint sensor
+; (USB\VID_138A&PID_00AB). Replaces the WBF/WUDFRd binding so the Rust
+; engine can talk to the sensor directly.
+;
+; IMPORTANT: Windows Hello fingerprint sign-in will stop working while this
+; driver is installed (the sensor is owned by whichever driver binds it).
+; Revert with scripts\revert.ps1.
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = USBDevice
+ClassGuid   = {88BA0321-0000-0000-0000-000000000010}
+Provider    = %ProviderName%
+DriverVer   = 08/16/2026,1.0.0.0
+
+[Manufacturer]
+%ProviderName% = DeviceList,NTamd64
+
+[DeviceList.NTamd64]
+%DeviceName% = WinUSB_Install, USB\VID_138A&PID_00AB
+
+[WinUSB_Install]
+Include = winusb.inf
+Needs   = WINUSB
+
+[WinUSB_Install.Services]
+Include = winusb.inf
+Needs   = WINUSB.Services
+
+[Strings]
+ProviderName = "InnologyBD"
+DeviceName   = "OmniLock Bio Sensor (VFS7552 PurePrint)"
