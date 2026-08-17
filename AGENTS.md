@@ -4,10 +4,10 @@
 
 ## Current State
 
-- **Version**: 0.0.36 (in development — v0.0.36 work is in the working tree, **uncommitted**; v0.0.35 was released via CI)
+- **Version**: 0.0.36 (**RELEASED 2026-08-16** via CI: signed installer + `.sig` on the GitHub release; `latest.json` updated on both endpoints — the installed 0.0.35 app auto-updates). Working tree clean except `omnilock-bio/` (abandoned engine, intentionally untracked — disposition unresolved).
 - **Last Updated**: 2026-08-16
-- **Git**: working on `main`, working tree contains the uncommitted v0.0.36 changes (do NOT revert).
-- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ❌ Runtime E2E testing on a real machine still outstanding.
+- **Git**: on `main` at `6ca702b`; tag `v0.0.36` pushed; last commit "release v0.0.36: publish latest.json...".
+- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ❌ Runtime E2E testing on a real machine still outstanding (see Next Session).
 
 ---
 
@@ -252,7 +252,7 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 
 ## Version History (most recent first)
 
-- **0.0.36 (IN DEVELOPMENT — working tree, uncommitted)** — Vault Storage (encrypted private file storage + encrypted manifest), stale-unlock detection + re-lock/keep prompt after restart, legacy service ACL boot purge, `cmd_biometric_login` parity (auto-lock minutes + USB-removal callback), **biometric login reworked to the Windows Hello prompt** (hardware-proven on the HP EliteBook 850 G5: the Synaptics WBF driver ignores background-app captures, so direct WBF is dead; the corrected `UserConsentVerificationResult` type name makes the Hello path work).
+- **0.0.36 (RELEASED 2026-08-16, CI-built + signed; auto-update published)** — Vault Storage (encrypted private file storage + encrypted manifest), stale-unlock detection + re-lock/keep prompt after restart, legacy service ACL boot purge, `cmd_biometric_login` parity (auto-lock minutes + USB-removal callback), **biometric login reworked to the Windows Hello prompt** (hardware-proven on the HP EliteBook 850 G5: the Synaptics WBF driver ignores background-app captures, so direct WBF is dead; the corrected `UserConsentVerificationResult` type name makes the Hello path work). Installer sha256 `FF982C26EE5DC96B0C5FC296EAB959EF26E24435BB69C056F0848F5E5CF2AFE8` on the `v0.0.36` release.
 - **0.0.35 (RELEASED 2026-08-07, CI-built + signed)** — AES-256-GCM encryption-based file/folder locking replaces destructive ACL locking; direct WBF fingerprint (no Windows Hello); ACL damage scanner + bulk recovery UI; widget temp-unlock + auto-relock; `.omnilock` file association + `--open-locked`; GitHub Release pipeline fixed and now works on tag push. Installer sha256 `2598219E8238B1EF...7F68CDCC` on the `v0.0.35` release. Runtime E2E testing still outstanding.
 - **0.0.34** — Widget focus-steal fix (prompt once per folder). Server-side Windows Hello enforcement in `cmd_biometric_login`. Signed installer + updated `latest.json`.
 - **0.0.33** — File-unlock child ACL fix v3, `force_unlock`, widget capability fix, `sync_vault_to_service` wiring.
@@ -265,22 +265,20 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 ## Next Session: Continue from Here
 
 ### Where we left off
-All v0.0.36 code changes are in the working tree and **compile clean** (src-tauri + service + tsc). Nothing is committed and no release exists.
+v0.0.36 is **released** (committed, tagged, CI-built signed release, `latest.json` live on both endpoints). The installed 0.0.35 app will offer the update automatically. Runtime E2E testing on the real machine is the only outstanding item.
 
 ### Suggested next steps (in order)
-1. **Run the app end-to-end on Windows** (you must do this on a real machine — I cannot):
-   - `npm run tauri dev`
-   - Setup wizard → create vault → verify `file_encryption_key` in vault
+1. **Let the installed app auto-update to v0.0.36, then run the app end-to-end on Windows** (you must do this on a real machine — I cannot):
+   - Update from the installed app (Settings → check for updates / restart app), or install `OmniLock_0.0.36_x64-setup.exe` from the GitHub release.
    - Lock a **test** file/folder (start small — see the drive warning below!) → confirm `.omnilock` blob created, original gone
    - Open the locked folder in Explorer → widget pops up → unlock with password → use files → close widget → verify auto re-lock
    - **Kill the app while a widget-unlocked item is still open → relaunch → log in → verify the stale-unlock prompt appears → test both Re-lock all and Keep unlocked**
    - Vault page → Vault Storage → Add File → verify original deleted + blob in `%APPDATA%\InnologyBD\OmniLock\storage\` → Extract to a folder → Delete
-   - Fingerprint: enroll a fingerprint in Windows Settings → Accounts → Sign-in options (must be enrolled for the user account), then test biometric login — expect the **Windows Hello fingerprint prompt** to appear (touch sensor → Verified). If the toggle is missing, check Diagnostics → Biometric (hardware available / token saved / token decrypts).
+   - **Fingerprint login (the reason for this release)**: Security page → Biometric Login (Fingerprint) → Enable → enter master password → log out → Login with Fingerprint → expect the **Windows Hello fingerprint prompt** → touch sensor → `Verified` → unlocked. If the toggle is missing, check Diagnostics → Biometric (hardware available / token saved / token decrypts).
    - Diagnostics → ACL Recovery: scan a previously-broken path, Fix All, verify the service no longer re-locks at boot
    - Double-click a `.omnilock` file → OmniLock opens with unlock widget (tests file association + `--open-locked`)
-2. **Fix anything the test surfaces**, then commit the v0.0.36 work (`git add` the changed files).
-3. **Release v0.0.36**: bump `version` in `src-tauri/Cargo.toml` + `package.json` + `tauri.conf.json` to `0.0.36`, commit, `git tag v0.0.36 && git push origin main --tags`. The CI workflow builds and creates the signed GitHub Release automatically (requires the 2 signing secrets in repo settings). After release, verify `latest.json`-style auto-update endpoint and download URL are live.
-4. Update this file + CHANGELOG + DEV_LOG as you go (standing rule).
+2. **Fix anything the test surfaces** and release as v0.0.37 (bump `src-tauri/Cargo.toml` + `package.json` + `tauri.conf.json`, commit, `git tag v0.0.37 && git push origin main --tags`; CI builds + signs the release; then update `latest.json` in root + `docs/` with the release's `.sig` + sha256 and push).
+3. Update this file + CHANGELOG + DEV_LOG as you go (standing rule).
 
 ### Priority issues to investigate (known design concerns)
 1. **DRIVE LOCK (resolved for now, more work optional)**: v0.0.35 drive lock = NoDrives hide only (whole-drive recursive encryption was removed as a data hazard). Direct path access (e.g. `D:\` in the address bar) still works — true blocking needs a kernel driver or per-user-selected subpath encryption. Decide whether that matters and implement if so.
