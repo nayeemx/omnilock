@@ -160,7 +160,7 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_rescue_unlock` | `path` | `Result<String, String>` | Rescue mode — needs session + file key |
 | `cmd_widget_unlock` | `password` | `Result<(), String>` | Temp-unlock target; auto re-locks on widget close |
 | `cmd_authenticate_biometric` | `message` | `Result<bool, String>` | Windows Hello fingerprint verification (`UserConsentVerifier` via PowerShell 5.1) — direct WBF is dead on this hardware (driver ignores background-app captures) |
-| `cmd_check_biometric` | None | `BiometricStatus` | Fast availability: WbioSrvc running + `WindowsHello\Enabled=0x1` + Bio Credential Provider key |
+| `cmd_check_biometric` | None | `BiometricStatus` | `UserConsentVerifier.CheckAvailabilityAsync()` (WinRT) — registry checks unreliable on Win11 (keys absent) |
 | `cmd_verify_locked_state` | None | `Vec<UnlockTarget>` | Stale entries: vault says locked, disk has no `.omnilock` blob |
 | `cmd_relock_entries` | `paths` | `Vec<(String, String)>` | Re-encrypt stale entries; per-item `ok`/`already_locked`/error |
 | `cmd_forget_unlocked_entries` | `paths` | `Result<(), String>` | Remove stale entries from the vault (keep unlocked) |

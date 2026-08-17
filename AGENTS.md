@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Version**: 0.0.36 (**RELEASED 2026-08-16** via CI: signed installer + `.sig` on the GitHub release; `latest.json` updated on both endpoints — the installed 0.0.35 app auto-updates). Working tree clean except `omnilock-bio/` (abandoned engine, intentionally untracked — disposition unresolved).
-- **Last Updated**: 2026-08-16
-- **Git**: on `main` at `6ca702b`; tag `v0.0.36` pushed; last commit "release v0.0.36: publish latest.json...".
+- **Version**: 0.0.37 (**RELEASED 2026-08-17** via CI: signed installer + `.sig` on the GitHub release; `latest.json` updated on both endpoints — the installed 0.0.36 app auto-updates). Working tree clean except `omnilock-bio/` (abandoned engine, intentionally untracked — disposition unresolved).
+- **Last Updated**: 2026-08-17
+- **Git**: on `main` at `<pending>`; tag `v0.0.37` pushed; last commit "release v0.0.37: publish latest.json...".
 - **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ❌ Runtime E2E testing on a real machine still outstanding (see Next Session).
 
 ---
@@ -252,6 +252,7 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 
 ## Version History (most recent first)
 
+- **0.0.37 (RELEASED 2026-08-17, CI-built + signed; auto-update published)** — **Biometric availability fixed**: `check_biometric_available` now asks `UserConsentVerifier.CheckAvailabilityAsync()` instead of registry keys (`WindowsHello\Enabled` + `Bio\Credential Provider` are absent on Windows 11 — that's why v0.0.36 said "unable to detect biometric" on a working sensor). All background commands now spawn with `CREATE_NO_WINDOW` (no console flashes; fixed `cloud_status.rs` + `shell_context.rs` + service daemon start). Installer sha256 `<pending>` on the `v0.0.37` release.
 - **0.0.36 (RELEASED 2026-08-16, CI-built + signed; auto-update published)** — Vault Storage (encrypted private file storage + encrypted manifest), stale-unlock detection + re-lock/keep prompt after restart, legacy service ACL boot purge, `cmd_biometric_login` parity (auto-lock minutes + USB-removal callback), **biometric login reworked to the Windows Hello prompt** (hardware-proven on the HP EliteBook 850 G5: the Synaptics WBF driver ignores background-app captures, so direct WBF is dead; the corrected `UserConsentVerificationResult` type name makes the Hello path work). Installer sha256 `FF982C26EE5DC96B0C5FC296EAB959EF26E24435BB69C056F0848F5E5CF2AFE8` on the `v0.0.36` release.
 - **0.0.35 (RELEASED 2026-08-07, CI-built + signed)** — AES-256-GCM encryption-based file/folder locking replaces destructive ACL locking; direct WBF fingerprint (no Windows Hello); ACL damage scanner + bulk recovery UI; widget temp-unlock + auto-relock; `.omnilock` file association + `--open-locked`; GitHub Release pipeline fixed and now works on tag push. Installer sha256 `2598219E8238B1EF...7F68CDCC` on the `v0.0.35` release. Runtime E2E testing still outstanding.
 - **0.0.34** — Widget focus-steal fix (prompt once per folder). Server-side Windows Hello enforcement in `cmd_biometric_login`. Signed installer + updated `latest.json`.

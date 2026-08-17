@@ -47,6 +47,16 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 
 ## Issue Log
 
+### v0.0.37: Biometric "Unable to Detect" On Windows 11 + Visible Console Flashes
+**Date:** 2026-08-17
+**Symptoms:** (1) The released v0.0.36 showed "Windows Hello is not available on this device" on the owner's HP EliteBook 850 G5 — the machine where the Hello prompt was proven to work. (2) Terminal windows appeared and closed in a blink while using the app.
+**Root Cause:** (1) `check_biometric_available` used registry keys `HKLM\...\Authentication\WindowsHello\Enabled` and `HKLM\...\Authentication\Bio\Credential Provider` — both are ABSENT on Windows 11 (verified: `reg query` returns ERROR for both, while `UserConsentVerifier.CheckAvailabilityAsync()` returns `Available`). (2) `cloud_status.rs` (7×) and `shell_context.rs` (16×) spawned `reg`/`ie4uinit`/`cmd` via raw `Command::new` without `CREATE_NO_WINDOW`; the service daemon start (`lib.rs`) also spawned `omnilock-svc.exe` visibly — every one flashes a console.
+**Solution:** (1) `check_biometric_available` now runs the same AsTask PowerShell pattern with `UserConsentVerifier.CheckAvailabilityAsync()` → `Available` on this machine; `cmd_check_biometric` made async (`spawn_blocking`). (2) All raw spawns replaced with `crate::hidden_cmd` (`CREATE_NO_WINDOW`).
+**Files Changed:** `src-tauri/src/biometric.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/cloud_status.rs`, `src-tauri/src/shell_context.rs`
+**Prevention:** Never use registry keys to detect Hello availability — always ask the WinRT API. Never spawn `reg`/`sc`/`cmd`/`powershell`/console binaries without `hidden_cmd`.
+
+---
+
 ### v0.0.36: Stale-Unlock State Died With the App (temp-unlock didn't survive restart)
 **Date:** 2026-08-16
 **Symptoms:** Widget temp-unlock left items decrypted but the vault still listed them as locked. If the app exited while the item was open (common), the next login showed a pointless "already unlocked" prompt, and there was no way to re-encrypt or forget the entry.

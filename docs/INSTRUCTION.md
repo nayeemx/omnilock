@@ -198,7 +198,7 @@ If Rust check fails, read the error — it will tell you the exact file and line
 13. **Biometric login = Windows Hello (v0.0.36):** the direct-WBF path is dead on the owner's hardware (Synaptics driver ignores background-app captures — proven via the WBF operational log). `authenticate_biometric` MUST use `UserConsentVerifier.RequestVerificationAsync` (PowerShell 5.1 + `System.WindowsRuntimeSystemExtensions.AsTask`) with the **correct WinRT type name `UserConsentVerificationResult`** — the old `UserConsentVerifierResult` does not exist and fails with "Unable to find type". Do not reintroduce WinBio code for this machine.
 14. **Vault storage reuses the file key (v0.0.36):** `vault_storage.rs` calls `file_locker::do_encrypt/do_decrypt` + `check_protected_path` (they are `pub`). Keep the OVLF/OVMF formats and the "delete original only after blob written" ordering intact — data loss otherwise.
 15. **Stale-unlock flow (v0.0.36):** never auto-re-encrypt entries silently. After login show the Re-lock all / Keep unlocked choice (`cmd_verify_locked_state` → `cmd_relock_entries` / `cmd_forget_unlocked_entries`).
-16. **Biometric availability (v0.0.36):** `check_biometric_available` uses fast registry/service checks (WbioSrvc RUNNING + `WindowsHello\Enabled=0x1` + Bio Credential Provider key). The real gate is the Hello prompt at scan time.
+16. **Biometric availability (v0.0.37):** `check_biometric_available` MUST use `UserConsentVerifier.CheckAvailabilityAsync()` (WinRT, PowerShell 5.1 + AsTask). Registry checks (`WindowsHello\Enabled`, `Bio\Credential Provider`) are unreliable — both keys are absent on Windows 11 machines where Hello works fine (proven on the HP 850 G5), which made v0.0.36 wrongly report "Windows Hello is not available".
 
 ---
 

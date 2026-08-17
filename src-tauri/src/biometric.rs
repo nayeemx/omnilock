@@ -29,67 +29,78 @@ fn powershell51_path() -> String {
     if std::path::Path::new(&path).exists() { path } else { "powershell".to_string() }
 }
 
-/// True only if Windows Hello's fingerprint verification can actually run:
-/// the Biometric Service must be up AND a biometric credential provider must be
-/// configured (a fingerprint/PIN is enrolled). Registry + service checks only
-/// (fast, non-blocking); the real gate is the prompt at scan time.
+/// True only if Windows Hello can verify the fingerprint for the current user.
+/// Asks Windows directly via `UserConsentVerifier.CheckAvailabilityAsync()`
+/// (PowerShell 5.1 + AsTask). NOTE: registry-based checks (WindowsHello\Enabled,
+/// Bio\Credential Provider) are NOT reliable — they are absent on Windows 11
+/// machines where the Hello prompt works fine (proven on the HP EliteBook 850 G5).
 pub fn check_biometric_available() -> BiometricStatus {
-    let service_check = crate::hidden_cmd("sc")
-        .args(["query", "WbioSrvc"])
+    let ps = powershell51_path();
+    let script = "$ErrorActionPreference = 'Stop'; \
+                  try { \
+                    Add-Type -AssemblyName System.Runtime.WindowsRuntime; \
+                    $null = [Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]; \
+                    $null = [Windows.Security.Credentials.UI.UserConsentVerifierAvailability,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]; \
+                    $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { \
+                      $_.Name -eq 'AsTask' -and \
+                      $_.GetParameters().Count -eq 1 -and \
+                      $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' \
+                    })[0]; \
+                    $asTask = $asTaskGeneric.MakeGenericMethod([Windows.Security.Credentials.UI.UserConsentVerifierAvailability]); \
+                    $op = [Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync(); \
+                    $result = $asTask.Invoke($null, @($op)).Result; \
+                    $result.ToString() \
+                  } catch { 'Error: ' + $_.Exception.Message }";
+
+    let out = crate::hidden_cmd(&ps)
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
         .output();
-    let service_running = match &service_check {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).contains("RUNNING"),
-        Err(_) => false,
+    let stdout = match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(e) => {
+            return BiometricStatus {
+                available: false,
+                reason: format!("Failed to query Windows Hello: {e}"),
+            };
+        }
     };
-    if !service_running {
+    if stdout.starts_with("Error:") {
         return BiometricStatus {
             available: false,
-            reason: "Windows Biometric Service is not running".to_string(),
+            reason: stdout,
         };
     }
-
-    let hello_check = crate::hidden_cmd("reg")
-        .args(["query",
-            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\WindowsHello",
-            "/v", "Enabled", "/t", "REG_DWORD"])
-        .output();
-    let hello_enabled = match &hello_check {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).contains("0x1"),
-        Err(_) => false,
-    };
-    if hello_enabled {
-        return BiometricStatus {
+    match stdout.as_str() {
+        "Available" => BiometricStatus {
             available: true,
             reason: "Windows Hello fingerprint verification is available".to_string(),
-        };
-    }
-
-    let bio_check = crate::hidden_cmd("reg")
-        .args(["query",
-            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Authentication\\Bio\\Credential Provider",
-            "/s"])
-        .output();
-    let has_bio = match &bio_check {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            !stdout.is_empty() && !stdout.contains("ERROR")
-        }
-        Err(_) => false,
-    };
-    if has_bio {
-        return BiometricStatus {
-            available: true,
-            reason: "Biometric provider detected. Set up a PIN in Windows Settings \u{2192} \
-                     Accounts \u{2192} Sign-in options."
+        },
+        "DeviceNotPresent" => BiometricStatus {
+            available: false,
+            reason: "No biometric device found".to_string(),
+        },
+        "DeviceBusy" => BiometricStatus {
+            available: false,
+            reason: "Biometric device is busy".to_string(),
+        },
+        "NotConfiguredForUser" => BiometricStatus {
+            available: false,
+            reason: "Windows Hello not set up for this user. Set up a fingerprint or PIN in \
+                     Windows Settings \u{2192} Accounts \u{2192} Sign-in options."
                 .to_string(),
-        };
-    }
-
-    BiometricStatus {
-        available: false,
-        reason: "Windows Hello not configured. Set up a fingerprint or PIN in Windows \
-                 Settings \u{2192} Accounts \u{2192} Sign-in options."
-            .to_string(),
+        },
+        "DisabledByPolicy" => BiometricStatus {
+            available: false,
+            reason: "Disabled by group policy".to_string(),
+        },
+        "DeviceNotConfigured" => BiometricStatus {
+            available: false,
+            reason: "Biometric device is not configured".to_string(),
+        },
+        other => BiometricStatus {
+            available: false,
+            reason: format!("Unexpected Windows Hello availability response: {other}"),
+        },
     }
 }
 

@@ -38,28 +38,28 @@ pub fn register_extension_only() -> Result<(), String> {
 /// opens OmniLock with --open-locked <path>, which shows the unlock widget.
 fn register_omnilock_extension(exe_path: &str) -> Result<(), String> {
     // .omnilock → OmniLockFile
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", r"HKEY_CLASSES_ROOT\.omnilock", "/ve", "/d", "OmniLockFile", "/f"])
         .output();
 
     // ProgID description
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile", "/ve", "/d", "OmniLock Encrypted File", "/f"])
         .output();
 
     // Icon
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile\DefaultIcon", "/ve", "/d", exe_path, "/f"])
         .output();
 
     // Open command → OmniLock.exe --open-locked "%1"
     let open_cmd = format!("\"{}\" --open-locked \"%1\"", exe_path);
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile\shell\open\command", "/ve", "/d", &open_cmd, "/f"])
         .output();
 
     // Notify shell
-    let _ = std::process::Command::new("ie4uinit.exe").args(["-show"]).output();
+    let _ = crate::hidden_cmd("ie4uinit.exe").args(["-show"]).output();
 
     logger::log("MENU", "Registered .omnilock file extension");
     Ok(())
@@ -68,42 +68,42 @@ fn register_omnilock_extension(exe_path: &str) -> Result<(), String> {
 fn install_for(reg_type: &str, exe_path: &str) -> Result<(), String> {
     let base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLock", reg_type);
 
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &base, "/ve", "/d", "Lock with OmniLock", "/f"])
         .output()
         .map_err(|e| format!("reg add failed: {}", e))?;
 
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &base, "/v", "Icon", "/d", exe_path, "/f"])
         .output()
         .map_err(|e| format!("reg add icon failed: {}", e))?;
 
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &base, "/v", "MultiSelectModel", "/d", "Player", "/f"])
         .output()
         .ok();
 
     let cmd_base = format!(r"{}\command", base);
     let cmd_value = format!("\"{}\" --context-menu-lock \"%1\"", exe_path);
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &cmd_base, "/ve", "/d", &cmd_value, "/f"])
         .output()
         .map_err(|e| format!("reg add command failed: {}", e))?;
 
     let unlock_base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLockUnlock", reg_type);
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &unlock_base, "/ve", "/d", "Unlock with OmniLock", "/f"])
         .output()
         .map_err(|e| format!("reg add unlock base failed: {}", e))?;
 
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &unlock_base, "/v", "Icon", "/d", exe_path, "/f"])
         .output()
         .map_err(|e| format!("reg add unlock icon failed: {}", e))?;
 
     let cmd_unlock_base = format!(r"{}\command", unlock_base);
     let cmd_unlock_value = format!("\"{}\" --context-menu-unlock \"%1\"", exe_path);
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &cmd_unlock_base, "/ve", "/d", &cmd_unlock_value, "/f"])
         .output()
         .map_err(|e| format!("reg add unlock command failed: {}", e))?;
@@ -114,13 +114,13 @@ fn install_for(reg_type: &str, exe_path: &str) -> Result<(), String> {
 pub fn uninstall() -> Result<(), String> {
     for reg_type in &["*", "Directory", "Drive"] {
         let base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLock", reg_type);
-        let _ = std::process::Command::new("reg")
+        let _ = crate::hidden_cmd("reg")
             .args(["delete", &base, "/f"])
             .output()
             .map_err(|e| format!("reg delete lock failed: {}", e))?;
 
         let unlock_base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLockUnlock", reg_type);
-        let _ = std::process::Command::new("reg")
+        let _ = crate::hidden_cmd("reg")
             .args(["delete", &unlock_base, "/f"])
             .output()
             .map_err(|e| format!("reg delete unlock failed: {}", e))?;
@@ -147,7 +147,7 @@ pub fn handle_context_menu_lock(path: &str) -> Result<String, String> {
         exe_str, "lock", path
     );
 
-    std::process::Command::new("cmd")
+    crate::hidden_cmd("cmd")
         .args(["/C", "start", "", "\"\"", &pass_cmd])
         .spawn()
         .map_err(|e| format!("Cannot launch OmniLock for lock: {}", e))?;
@@ -171,7 +171,7 @@ pub fn handle_context_menu_unlock(path: &str) -> Result<String, String> {
         exe_str, "unlock", path
     );
 
-    std::process::Command::new("cmd")
+    crate::hidden_cmd("cmd")
         .args(["/C", "start", "", "\"\"", &pass_cmd])
         .spawn()
         .map_err(|e| format!("Cannot launch OmniLock for unlock: {}", e))?;

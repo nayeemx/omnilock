@@ -79,7 +79,7 @@ pub fn shutdown() {
     }
 
     let reg_key = format!(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\OmniLock");
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["delete", &reg_key, "/f"])
         .output();
     logger::log("CLOUD", "Cloud status module shut down");
@@ -128,25 +128,25 @@ fn register_sync_root(vault_root: &str) -> Result<(), String> {
 
 fn register_sync_root_registry(vault_root: &str) {
     let reg_base = r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\OmniLock";
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", reg_base, "/ve", "/d", "OmniLock", "/f"])
         .output();
 
     let id_path = format!(r"{}\SyncRootId", reg_base);
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &id_path, "/ve", "/d", "OmniLock", "/f"])
         .output();
 
     let user_sync_roots = format!(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserSyncRoots\OmniLock");
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", &user_sync_roots, "/v", "IsSyncRoot", "/t", "REG_DWORD", "/d", "1", "/f"])
         .output();
 
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", reg_base, "/v", "Path", "/d", vault_root, "/f"])
         .output();
 
-    let _ = std::process::Command::new("reg")
+    let _ = crate::hidden_cmd("reg")
         .args(["add", reg_base, "/v", "DisplayName", "/d", "OmniLock", "/f"])
         .output();
 

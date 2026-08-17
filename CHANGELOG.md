@@ -4,7 +4,13 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
-## [0.0.36] - 2026-08-16 (in development — uncommitted)
+## [0.0.37] - 2026-08-17 (in development — uncommitted)
+
+### Fixed
+- **Biometric "unable to detect" on Windows 11**: `check_biometric_available` used registry keys (`WindowsHello\Enabled`, `Bio\Credential Provider`) that do NOT exist on Windows 11 — every Win11 machine reported "Windows Hello is not available" even with a working fingerprint sensor. Now queries `UserConsentVerifier.CheckAvailabilityAsync()` directly (the WinRT API Windows itself uses); verified returning `Available` on the HP EliteBook 850 G5. `cmd_check_biometric` is now async (spawn_blocking) so the ~1s PowerShell probe never blocks the UI.
+- **Visible terminal flashes**: several background commands were spawned without the hidden-window flag — `reg` calls in `cloud_status.rs`/`shell_context.rs`, `ie4uinit.exe` refresh, context-menu `cmd /C start` launchers, and the `omnilock-svc.exe --standalone` daemon start all now use `hidden_cmd` (`CREATE_NO_WINDOW`). No console window can flash from the app anymore.
+
+## [0.0.36] - 2026-08-16 (released — signed installer + latest.json on both endpoints)
 
 ### Added
 - **Vault Storage** (`vault_storage.rs`): private file storage inside the vault — "Add File to Vault" encrypts a file with the `file_encryption_key` into `%APPDATA%\InnologyBD\OmniLock\storage\` under a random name and deletes the original. Extract decrypts it back to a chosen folder (refuses to overwrite existing files); the manifest (`vault_files.enc`) is itself AES-GCM encrypted so stored file names never leak. New commands `cmd_vault_store_file` / `cmd_vault_list_files` / `cmd_vault_extract_file` / `cmd_vault_delete_file` + UI section on the Vault page.

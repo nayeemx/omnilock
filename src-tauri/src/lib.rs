@@ -1384,8 +1384,13 @@ async fn cmd_get_weather(location: Option<String>) -> Result<system_monitor::Wea
 }
 
 #[tauri::command]
-fn cmd_check_biometric() -> biometric::BiometricStatus {
-    biometric::check_biometric_available()
+async fn cmd_check_biometric() -> biometric::BiometricStatus {
+    tokio::task::spawn_blocking(biometric::check_biometric_available)
+        .await
+        .unwrap_or(biometric::BiometricStatus {
+            available: false,
+            reason: "Biometric availability check failed".to_string(),
+        })
 }
 
 #[tauri::command]
@@ -1812,7 +1817,8 @@ pub fn run() {
                 });
                 let svc_path = search_paths.filter(|p| p.exists()).next();
                 if let Some(path) = svc_path {
-                    match std::process::Command::new(&path)
+                    let path_str = path.to_string_lossy().to_string();
+                    match crate::hidden_cmd(&path_str)
                         .arg("--standalone")
                         .spawn()
                     {
